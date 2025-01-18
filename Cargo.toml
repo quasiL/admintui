@@ -1,0 +1,10 @@
+[package]
+name = "admintui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cron = "0.15.0"
+ratatui = "0.29.0"
+tui-textarea = "0.7.0"
+unicode-width = "0.2.0"
