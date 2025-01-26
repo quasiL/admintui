@@ -50,7 +50,7 @@ impl MainMenu {
                     String::from("Main 4"),
                     String::from("Main 5"),
                 ],
-                state: ListState::default(),
+                state: ListState::default().with_selected(Some(0)),
             },
         }
     }
