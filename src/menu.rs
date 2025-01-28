@@ -73,6 +73,7 @@ impl MainMenu {
                 self.select_last();
                 None
             }
+            KeyCode::Char('q') => Some(Screen::Quit),
             KeyCode::Enter => self.process_select(),
             _ => None,
         }

@@ -1,0 +1,13 @@
+services:
+  rust-build:
+    image: rust:${RUST_IMAGE_TAG}
+    container_name: rust_app_builder
+    working_dir: /usr/src/app
+    volumes:
+      - .:/usr/src/app
+      - ./target:/usr/src/app/target
+      - ./output:/output
+    command: >
+      bash -c "cargo build --release && cp target/release/${APP_NAME} /output/"
+    environment:
+      - CARGO_HOME=/usr/local/cargo

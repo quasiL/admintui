@@ -74,7 +74,7 @@ impl CronJob {
         ]
     }
 
-    fn _cron_notation(&self) -> &str {
+    pub fn cron_notation(&self) -> &str {
         &self.cron_notation
     }
 
@@ -119,13 +119,13 @@ impl CronTable {
     pub fn new() -> Self {
         let cron_jobs_vec = vec![
             CronJob {
-                cron_notation: "0 5 * * * *".to_string(),
+                cron_notation: "0 5 * * *".to_string(),
                 job: "/usr/bin/python3 /home/user/scripts/backup.py".to_string(),
                 job_description: "Backup Database".to_string(),
                 next_execution: "2025-01-17 05:00".to_string(),
             },
             CronJob {
-                cron_notation: "0 0 * * 0 *".to_string(),
+                cron_notation: "0 0 * * 0".to_string(),
                 job: "/usr/bin/python3 /home/user/scripts/system_update.py".to_string(),
                 job_description: "Weekly System Update".to_string(),
                 next_execution: "2025-01-21 00:00".to_string(),
@@ -175,7 +175,11 @@ impl CronTable {
 
     pub fn handle_event(&mut self, key: event::KeyEvent) -> Option<Screen> {
         if self.show_popup == true {
-            self.inputs.handle_inputs(key, &mut self.show_popup);
+            self.inputs.handle_inputs(
+                key,
+                &mut self.show_popup,
+                &mut self.items[self.state.selected().unwrap()],
+            );
             None
         } else {
             match key.code {
@@ -194,6 +198,7 @@ impl CronTable {
                 }
                 KeyCode::Enter => {
                     self.show_popup = true;
+                    self.inputs.first_render();
                     self.inputs
                         .setup_inputs(&self.items[self.state.selected().unwrap()]);
                     None
@@ -250,6 +255,7 @@ impl CronTable {
             .map(Cell::from)
             .collect::<Row>()
             .style(header_style)
+            .bold()
             .height(1);
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
@@ -268,7 +274,7 @@ impl CronTable {
             rows,
             [
                 // + 1 is for padding.
-                Constraint::Length(self.longest_item_lens.0 + 1),
+                Constraint::Length(self.longest_item_lens.0 + 4),
                 Constraint::Min(self.longest_item_lens.1 + 1),
                 Constraint::Min(self.longest_item_lens.2),
             ],

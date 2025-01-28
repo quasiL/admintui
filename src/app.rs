@@ -3,7 +3,7 @@ use crate::menu::MainMenu;
 use ratatui::{
     backend::Backend,
     buffer::Buffer,
-    crossterm::event::{self, Event, KeyCode},
+    crossterm::event::{self, Event},
     layout::Rect,
     widgets::Widget,
     Terminal,
@@ -17,6 +17,7 @@ pub struct App {
 pub enum Screen {
     MainMenu(MainMenu),
     CronTable(CronTable),
+    Quit,
 }
 
 impl Default for App {
@@ -32,6 +33,7 @@ impl Widget for &mut Screen {
         match self {
             Screen::MainMenu(menu) => menu.render(area, buf),
             Screen::CronTable(cron) => cron.render(area, buf),
+            Screen::Quit => (),
         }
     }
 }
@@ -41,10 +43,12 @@ impl App {
         loop {
             terminal.draw(|frame| frame.render_widget(&mut self.screen, frame.area()))?;
 
+            match &mut self.screen {
+                Screen::Quit => break,
+                _ => (),
+            }
+
             if let Event::Key(key) = event::read()? {
-                if let KeyCode::Char('q') = key.code {
-                    break;
-                }
                 self.handle_event(key.into());
             }
         }
@@ -63,6 +67,7 @@ impl App {
                     self.screen = cron_screen;
                 }
             }
+            _ => (),
         }
     }
 }
