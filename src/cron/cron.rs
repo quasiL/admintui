@@ -1,6 +1,8 @@
 use crate::app::Screen;
 use crate::cron::Inputs;
 use crate::menu::MainMenu;
+use chrono::{DateTime, Utc};
+use cron::Schedule;
 use ratatui::{
     crossterm::event::{self, KeyCode},
     layout::{Constraint, Layout, Margin, Rect},
@@ -12,6 +14,10 @@ use ratatui::{
         ScrollbarOrientation, ScrollbarState, Table, TableState,
     },
 };
+use std::fs::File;
+use std::io::{self, BufRead};
+use std::path::Path;
+use std::str::FromStr;
 use style::palette::tailwind;
 use unicode_width::UnicodeWidthStr;
 
@@ -85,6 +91,53 @@ impl CronJob {
     pub fn job_description(&self) -> &str {
         &self.job_description
     }
+
+    fn from_crontab(file_path: &str) -> Result<Vec<CronJob>, io::Error> {
+        let path = Path::new(file_path);
+        let file = File::open(path)?;
+        let reader = io::BufReader::new(file);
+
+        let mut cron_jobs = Vec::new();
+        let mut current_description = String::new();
+
+        for line in reader.lines() {
+            let line = line?;
+            let line = line.trim();
+
+            if line.is_empty() {
+                continue;
+            } else if line.starts_with('#') {
+                current_description = line.trim_start_matches('#').trim().to_string();
+            } else {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() < 6 {
+                    continue;
+                }
+
+                let cron_notation = parts[..5].join(" ");
+                let job = parts[5..].join(" ");
+
+                let next_execution = format!("* {}", cron_notation);
+                let modified_next_execution = get_next_execution(&next_execution)
+                    .map(|dt| dt.to_string())
+                    .unwrap_or_else(|| "N/A".to_string());
+
+                cron_jobs.push(CronJob {
+                    cron_notation,
+                    job,
+                    job_description: current_description.clone(),
+                    next_execution: modified_next_execution,
+                });
+            }
+        }
+
+        Ok(cron_jobs)
+    }
+}
+
+fn get_next_execution(cron_expr: &str) -> Option<DateTime<Utc>> {
+    let schedule = Schedule::from_str(cron_expr).ok()?;
+    schedule.upcoming(Utc).next()
 }
 
 pub struct CronTable {
@@ -117,50 +170,7 @@ impl Widget for &mut CronTable {
 
 impl CronTable {
     pub fn new() -> Self {
-        let cron_jobs_vec = vec![
-            CronJob {
-                cron_notation: "0 5 * * *".to_string(),
-                job: "/usr/bin/python3 /home/user/scripts/backup.py".to_string(),
-                job_description: "Backup Database".to_string(),
-                next_execution: "2025-01-17 05:00".to_string(),
-            },
-            CronJob {
-                cron_notation: "0 0 * * 0".to_string(),
-                job: "/usr/bin/python3 /home/user/scripts/system_update.py".to_string(),
-                job_description: "Weekly System Update".to_string(),
-                next_execution: "2025-01-21 00:00".to_string(),
-            },
-            CronJob {
-                cron_notation: "30 8 * * 1-5".to_string(),
-                job: "/usr/bin/python3 /home/user/scripts/email_reports.py".to_string(),
-                job_description: "Send Email Reports".to_string(),
-                next_execution: "2025-01-17 08:30".to_string(),
-            },
-            CronJob {
-                cron_notation: "15 3 * * *".to_string(),
-                job: "/usr/bin/bash /home/user/scripts/cleanup_temp_files.sh".to_string(),
-                job_description: "Cleanup Temp Files".to_string(),
-                next_execution: "2025-01-17 03:15".to_string(),
-            },
-            CronJob {
-                cron_notation: "0 12 * * *".to_string(),
-                job: "/usr/bin/python3 /home/user/scripts/db_sync.py".to_string(),
-                job_description: "Daily Database Sync".to_string(),
-                next_execution: "2025-01-17 12:00".to_string(),
-            },
-            CronJob {
-                cron_notation: "0 0 1 * *".to_string(),
-                job: "/usr/bin/python3 /home/user/scripts/monthly_backup.py".to_string(),
-                job_description: "Monthly Backup".to_string(),
-                next_execution: "2025-01-17 00:00".to_string(),
-            },
-            CronJob {
-                cron_notation: "0 0 1 1 *".to_string(),
-                job: "/usr/bin/python3 /home/user/scripts/yearly_backup.py".to_string(),
-                job_description: "Yearly Backup".to_string(),
-                next_execution: "2025-02-01 00:00".to_string(),
-            },
-        ];
+        let cron_jobs_vec = CronJob::from_crontab("crontab").unwrap();
         Self {
             state: TableState::default().with_selected(0),
             longest_item_lens: constraint_len_calculator(&cron_jobs_vec),
