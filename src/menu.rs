@@ -55,27 +55,39 @@ impl MainMenu {
         }
     }
 
-    pub fn handle_event(&mut self, key: event::KeyEvent) -> Option<Screen> {
+    pub fn handle_screen(&mut self, key: event::KeyEvent) -> Option<Screen> {
+        if key.code == KeyCode::Char('q') {
+            Some(Screen::Quit)
+        } else if key.code == KeyCode::Enter {
+            self.process_select()
+        } else {
+            self.handle_keys(key);
+            None
+        }
+    }
+
+    fn process_select(&mut self) -> Option<Screen> {
+        match self.menu_list.state.selected() {
+            Some(0) => Some(Screen::CronTable(CronTable::new())),
+            _ => None,
+        }
+    }
+
+    fn handle_keys(&mut self, key: event::KeyEvent) {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 self.select_next();
-                None
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.select_previous();
-                None
             }
             KeyCode::Char('g') | KeyCode::Home => {
                 self.select_first();
-                None
             }
             KeyCode::Char('G') | KeyCode::End => {
                 self.select_last();
-                None
             }
-            KeyCode::Char('q') => Some(Screen::Quit),
-            KeyCode::Enter => self.process_select(),
-            _ => None,
+            _ => {}
         }
     }
 
@@ -93,17 +105,6 @@ impl MainMenu {
 
     fn select_last(&mut self) {
         self.menu_list.state.select_last();
-    }
-
-    fn process_select(&mut self) -> Option<Screen> {
-        if let Some(selected) = self.menu_list.state.selected() {
-            match selected {
-                0 => Some(Screen::CronTable(CronTable::new())),
-                _ => None,
-            }
-        } else {
-            None
-        }
     }
 
     fn render_footer(area: Rect, buf: &mut Buffer) {

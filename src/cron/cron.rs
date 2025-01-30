@@ -1,5 +1,5 @@
 use crate::app::Screen;
-use crate::cron::Inputs;
+use crate::cron::{Inputs, TableColors};
 use crate::menu::MainMenu;
 use chrono::{DateTime, Utc};
 use cron::Schedule;
@@ -7,7 +7,7 @@ use ratatui::{
     crossterm::event::{self, KeyCode},
     layout::{Constraint, Layout, Margin, Rect},
     prelude::*,
-    style::{self, Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style, Stylize},
     text::Text,
     widgets::{
         Block, BorderType, Borders, Cell, HighlightSpacing, Paragraph, Row, Scrollbar,
@@ -18,7 +18,6 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::str::FromStr;
-use style::palette::tailwind;
 use unicode_width::UnicodeWidthStr;
 
 const INFO_TEXT: [&str; 2] = [
@@ -26,43 +25,6 @@ const INFO_TEXT: [&str; 2] = [
     "(Enter) select | (n) new",
 ];
 const ITEM_HEIGHT: usize = 4;
-
-const PALETTES: [tailwind::Palette; 4] = [
-    tailwind::BLUE,
-    tailwind::EMERALD,
-    tailwind::INDIGO,
-    tailwind::RED,
-];
-
-struct TableColors {
-    buffer_bg: Color,
-    header_bg: Color,
-    header_fg: Color,
-    row_fg: Color,
-    selected_row_style_fg: Color,
-    selected_column_style_fg: Color,
-    selected_cell_style_fg: Color,
-    normal_row_color: Color,
-    alt_row_color: Color,
-    footer_border_color: Color,
-}
-
-impl TableColors {
-    const fn new(color: &tailwind::Palette) -> Self {
-        Self {
-            buffer_bg: tailwind::SLATE.c950,
-            header_bg: color.c900,
-            header_fg: tailwind::SLATE.c200,
-            row_fg: tailwind::SLATE.c200,
-            selected_row_style_fg: color.c400,
-            selected_column_style_fg: color.c400,
-            selected_cell_style_fg: color.c600,
-            normal_row_color: tailwind::SLATE.c950,
-            alt_row_color: tailwind::SLATE.c900,
-            footer_border_color: color.c400,
-        }
-    }
-}
 
 pub struct CronJob {
     pub cron_notation: String,
@@ -146,7 +108,6 @@ pub struct CronTable {
     longest_item_lens: (u16, u16, u16),
     scroll_state: ScrollbarState,
     colors: TableColors,
-    color_index: usize,
     show_popup: bool,
     inputs: Inputs,
 }
@@ -156,7 +117,6 @@ impl Widget for &mut CronTable {
         let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
         let rects = vertical.split(area);
 
-        self.colors = TableColors::new(&PALETTES[self.color_index]);
         self.render_table(rects[0], buf);
         self.render_scrollbar(rects[0], buf);
         self.render_footer(rects[1], buf);
@@ -175,15 +135,14 @@ impl CronTable {
             state: TableState::default().with_selected(0),
             longest_item_lens: constraint_len_calculator(&cron_jobs_vec),
             scroll_state: ScrollbarState::new((cron_jobs_vec.len() - 1) * ITEM_HEIGHT),
-            colors: TableColors::new(&PALETTES[0]),
-            color_index: 0,
+            colors: TableColors::new(),
             items: cron_jobs_vec,
             show_popup: false,
             inputs: Inputs::default(),
         }
     }
 
-    pub fn handle_event(&mut self, key: event::KeyEvent) -> Option<Screen> {
+    pub fn handle_screen(&mut self, key: event::KeyEvent) -> Option<Screen> {
         if self.show_popup == true {
             self.inputs.handle_inputs(
                 key,
@@ -218,7 +177,7 @@ impl CronTable {
         }
     }
 
-    pub fn next_row(&mut self) {
+    fn next_row(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
                 if i >= self.items.len() - 1 {
@@ -233,7 +192,7 @@ impl CronTable {
         self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
     }
 
-    pub fn previous_row(&mut self) {
+    fn previous_row(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
@@ -250,15 +209,11 @@ impl CronTable {
 
     fn render_table(&mut self, area: Rect, buf: &mut Buffer) {
         let header_style = Style::default()
-            .fg(self.colors.header_fg)
-            .bg(self.colors.header_bg);
+            .fg(self.colors.header_text_color)
+            .bg(self.colors.header_color);
         let selected_row_style = Style::default()
             .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_row_style_fg);
-        let selected_col_style = Style::default().fg(self.colors.selected_column_style_fg);
-        let selected_cell_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_cell_style_fg);
+            .fg(self.colors.selected_row_color);
 
         let header = ["Cron Notation", "Next Execution", "Description"]
             .into_iter()
@@ -276,7 +231,7 @@ impl CronTable {
             item.into_iter()
                 .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
                 .collect::<Row>()
-                .style(Style::new().fg(self.colors.row_fg).bg(color))
+                .style(Style::new().fg(self.colors.row_text_color).bg(color))
                 .height(4)
         });
         let bar = " █ ";
@@ -291,15 +246,12 @@ impl CronTable {
         )
         .header(header)
         .row_highlight_style(selected_row_style)
-        .column_highlight_style(selected_col_style)
-        .cell_highlight_style(selected_cell_style)
         .highlight_symbol(Text::from(vec![
             "".into(),
             bar.into(),
             bar.into(),
             "".into(),
         ]))
-        .bg(self.colors.buffer_bg)
         .highlight_spacing(HighlightSpacing::Always);
         StatefulWidget::render(t, area, buf, &mut self.state);
     }
@@ -325,16 +277,11 @@ impl CronTable {
     }
 
     fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
-        let footer_style = Style::default()
-            .fg(self.colors.row_fg)
-            .bg(self.colors.buffer_bg);
+        let footer_style = Style::default();
+        // .fg(self.colors.row_fg)
+        // .bg(self.colors.buffer_bg);
 
         let border_style = Style::default().fg(self.colors.footer_border_color);
-
-        // let selected_index = self.state.selected().unwrap_or(0);
-        // let selected_cron = &self.items[selected_index];
-        // let selected_cron_description =
-        //     format!("Selected cron: {}", selected_cron.job_description());
 
         let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
             .style(footer_style)

@@ -58,12 +58,12 @@ impl App {
     fn handle_event(&mut self, key: event::KeyEvent) {
         match &mut self.screen {
             Screen::MainMenu(menu) => {
-                if let Some(menu_screen) = menu.handle_event(key) {
+                if let Some(menu_screen) = menu.handle_screen(key) {
                     self.screen = menu_screen;
                 }
             }
             Screen::CronTable(cron) => {
-                if let Some(cron_screen) = cron.handle_event(key) {
+                if let Some(cron_screen) = cron.handle_screen(key) {
                     self.screen = cron_screen;
                 }
             }
