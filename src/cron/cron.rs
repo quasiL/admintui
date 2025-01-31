@@ -6,7 +6,7 @@ use cron::Schedule;
 use ratatui::{
     crossterm::event::{self, KeyCode},
     layout::{Constraint, Layout, Margin, Rect},
-    prelude::*,
+    prelude::{Buffer, StatefulWidget, Widget},
     style::{Color, Modifier, Style, Stylize},
     text::Text,
     widgets::{
@@ -20,9 +20,10 @@ use std::path::Path;
 use std::str::FromStr;
 use unicode_width::UnicodeWidthStr;
 
-const INFO_TEXT: [&str; 2] = [
-    "(Esc) quit | (↑) move up | (↓) move down",
-    "(Enter) select | (n) new",
+const INFO_TEXT: [&str; 3] = [
+    "",
+    "(Esc) quit | (↓↑) move up and down | (Enter) select | (n) new",
+    "",
 ];
 const ITEM_HEIGHT: usize = 4;
 
@@ -114,7 +115,7 @@ pub struct CronTable {
 
 impl Widget for &mut CronTable {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
+        let vertical = &Layout::vertical([Constraint::Min(1), Constraint::Length(3)]);
         let rects = vertical.split(area);
 
         self.render_table(rects[0], buf);
@@ -217,11 +218,11 @@ impl CronTable {
 
         let header = ["Cron Notation", "Next Execution", "Description"]
             .into_iter()
-            .map(Cell::from)
+            .map(|title| Cell::from(Text::from(format!("\n{}\n", title)))) // Adds top and bottom padding
             .collect::<Row>()
             .style(header_style)
             .bold()
-            .height(1);
+            .height(3);
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
                 0 => self.colors.normal_row_color,
@@ -246,6 +247,11 @@ impl CronTable {
         )
         .header(header)
         .row_highlight_style(selected_row_style)
+        .style(Style::default().bg(if (self.items.len() + 1) % 2 == 0 {
+            self.colors.alt_row_color
+        } else {
+            self.colors.normal_row_color
+        }))
         .highlight_symbol(Text::from(vec![
             "".into(),
             bar.into(),
@@ -257,7 +263,10 @@ impl CronTable {
     }
 
     fn render_scrollbar(&mut self, area: Rect, buf: &mut Buffer) {
-        let scrollbar_style = Style::default().fg(Color::White).bg(Color::DarkGray);
+        let scrollbar_style = Style::default()
+            .fg(Color::White)
+            .bg(Color::DarkGray)
+            .add_modifier(Modifier::REVERSED);
 
         let scrollbar = Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight)
@@ -277,21 +286,12 @@ impl CronTable {
     }
 
     fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
-        let footer_style = Style::default();
-        // .fg(self.colors.row_fg)
-        // .bg(self.colors.buffer_bg);
-
-        let border_style = Style::default().fg(self.colors.footer_border_color);
+        let footer_style = Style::default().bg(self.colors.footer_color);
 
         let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
             .style(footer_style)
             .centered()
-            .block(
-                Block::default()
-                    .borders(Borders::TOP)
-                    .border_type(BorderType::Plain)
-                    .border_style(border_style),
-            );
+            .block(Block::default());
 
         Widget::render(info_footer, area, buf);
     }

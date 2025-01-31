@@ -1,27 +1,28 @@
 use crate::app::Screen;
 use crate::cron::CronTable;
+use crate::menu::MenuStyles;
 use ratatui::{
     buffer::Buffer,
-    crossterm::event::{self, KeyCode},
-    layout::{Constraint, Layout, Rect},
-    style::{
-        palette::tailwind::{BLUE, SLATE},
-        Color, Modifier, Style, Stylize,
+    crossterm::{
+        event::{self, KeyCode},
+        style::Color,
     },
+    layout::{Constraint, Layout, Rect},
+    style::Stylize,
     symbols,
-    text::Line,
+    text::{Line, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
 };
 
-const TODO_HEADER_STYLE: Style = Style::new().fg(SLATE.c100).bg(BLUE.c800);
-const NORMAL_ROW_BG: Color = SLATE.c950;
-//const ALT_ROW_BG_COLOR: Color = SLATE.c900;
-const SELECTED_STYLE: Style = Style::new().bg(SLATE.c800).add_modifier(Modifier::BOLD);
-const TEXT_FG_COLOR: Color = SLATE.c200;
-//const COMPLETED_TEXT_FG_COLOR: Color = GREEN.c500;
+const INFO_TEXT: [&str; 3] = [
+    "",
+    "(Esc|q) quit | (↓↑) move up and down | (Enter) select",
+    "",
+];
 
 pub struct MainMenu {
     menu_list: MenuList,
+    styles: MenuStyles,
 }
 
 struct MenuList {
@@ -32,10 +33,10 @@ struct MenuList {
 impl Widget for &mut MainMenu {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let [main_area, footer_area] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(area);
+            Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).areas(area);
 
         self.render_list(main_area, buf);
-        MainMenu::render_footer(footer_area, buf);
+        self.render_footer(footer_area, buf);
     }
 }
 
@@ -52,11 +53,12 @@ impl MainMenu {
                 ],
                 state: ListState::default().with_selected(Some(0)),
             },
+            styles: MenuStyles::new(),
         }
     }
 
     pub fn handle_screen(&mut self, key: event::KeyEvent) -> Option<Screen> {
-        if key.code == KeyCode::Char('q') {
+        if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
             Some(Screen::Quit)
         } else if key.code == KeyCode::Enter {
             self.process_select()
@@ -81,10 +83,10 @@ impl MainMenu {
             KeyCode::Char('k') | KeyCode::Up => {
                 self.select_previous();
             }
-            KeyCode::Char('g') | KeyCode::Home => {
+            KeyCode::Home => {
                 self.select_first();
             }
-            KeyCode::Char('G') | KeyCode::End => {
+            KeyCode::End => {
                 self.select_last();
             }
             _ => {}
@@ -107,10 +109,13 @@ impl MainMenu {
         self.menu_list.state.select_last();
     }
 
-    fn render_footer(area: Rect, buf: &mut Buffer) {
-        Paragraph::new("Use ↓↑ to move, Enter to select, q to quit.")
+    fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
+        let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
+            .style(self.styles.footer_style)
             .centered()
-            .render(area, buf);
+            .block(Block::default());
+
+        Widget::render(info_footer, area, buf);
     }
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
@@ -118,19 +123,22 @@ impl MainMenu {
             .title(Line::raw("AdminTUI").centered())
             .borders(Borders::TOP)
             .border_set(symbols::border::EMPTY)
-            .border_style(TODO_HEADER_STYLE)
-            .bg(NORMAL_ROW_BG);
+            .border_style(self.styles.header_style)
+            .bg(self.styles.menu_background_color);
 
-        let items: Vec<ListItem> = self
+        //     .map(|todo_item| {
+        //         ListItem::new(Line::styled(todo_item, self.styles.row_text_color).centered())
+        //     })
+        let items: Vec<Text> = self
             .menu_list
             .items
             .iter()
-            .map(|todo_item| ListItem::new(Line::styled(todo_item, TEXT_FG_COLOR).centered()))
+            .map(|item| Text::from_iter(["", item.as_str(), ""]).centered())
             .collect();
 
         let list = List::new(items)
             .block(block)
-            .highlight_style(SELECTED_STYLE);
+            .highlight_style(self.styles.selected_row_style);
 
         StatefulWidget::render(list, area, buf, &mut self.menu_list.state);
     }

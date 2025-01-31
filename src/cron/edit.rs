@@ -2,7 +2,7 @@ use crate::cron::CronJob;
 use ratatui::{
     crossterm::event::{self, KeyCode},
     layout::{Constraint, Flex, Layout, Rect},
-    prelude::*,
+    prelude::{Buffer, Widget},
     style::{self, Color, Style, Stylize},
     text::Text,
     widgets::{Block, BorderType, Borders, Clear, Paragraph, TableState},

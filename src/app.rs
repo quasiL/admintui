@@ -42,12 +42,10 @@ impl App {
     pub fn run(&mut self, terminal: &mut Terminal<impl Backend>) -> Result<(), Error> {
         loop {
             terminal.draw(|frame| frame.render_widget(&mut self.screen, frame.area()))?;
-
             match &mut self.screen {
                 Screen::Quit => break,
                 _ => (),
             }
-
             if let Event::Key(key) = event::read()? {
                 self.handle_event(key.into());
             }
