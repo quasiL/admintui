@@ -7,3 +7,5 @@ pub use edit::Inputs;
 
 pub mod styles;
 pub use styles::TableColors;
+
+pub mod utils;

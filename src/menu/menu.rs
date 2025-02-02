@@ -3,15 +3,12 @@ use crate::cron::CronTable;
 use crate::menu::MenuStyles;
 use ratatui::{
     buffer::Buffer,
-    crossterm::{
-        event::{self, KeyCode},
-        style::Color,
-    },
+    crossterm::event::{self, KeyCode},
     layout::{Constraint, Layout, Rect},
     style::Stylize,
     symbols,
     text::{Line, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget},
+    widgets::{Block, Borders, List, ListState, Paragraph, StatefulWidget, Widget},
 };
 
 const INFO_TEXT: [&str; 3] = [
@@ -78,44 +75,19 @@ impl MainMenu {
     fn handle_keys(&mut self, key: event::KeyEvent) {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                self.select_next();
+                self.menu_list.state.select_next();
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                self.select_previous();
+                self.menu_list.state.select_previous();
             }
             KeyCode::Home => {
-                self.select_first();
+                self.menu_list.state.select_first();
             }
             KeyCode::End => {
-                self.select_last();
+                self.menu_list.state.select_last();
             }
             _ => {}
         }
-    }
-
-    fn select_next(&mut self) {
-        self.menu_list.state.select_next();
-    }
-
-    fn select_previous(&mut self) {
-        self.menu_list.state.select_previous();
-    }
-
-    fn select_first(&mut self) {
-        self.menu_list.state.select_first();
-    }
-
-    fn select_last(&mut self) {
-        self.menu_list.state.select_last();
-    }
-
-    fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
-        let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(self.styles.footer_style)
-            .centered()
-            .block(Block::default());
-
-        Widget::render(info_footer, area, buf);
     }
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
@@ -126,9 +98,6 @@ impl MainMenu {
             .border_style(self.styles.header_style)
             .bg(self.styles.menu_background_color);
 
-        //     .map(|todo_item| {
-        //         ListItem::new(Line::styled(todo_item, self.styles.row_text_color).centered())
-        //     })
         let items: Vec<Text> = self
             .menu_list
             .items
@@ -141,5 +110,14 @@ impl MainMenu {
             .highlight_style(self.styles.selected_row_style);
 
         StatefulWidget::render(list, area, buf, &mut self.menu_list.state);
+    }
+
+    fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
+        let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
+            .style(self.styles.footer_style)
+            .centered()
+            .block(Block::default());
+
+        Widget::render(info_footer, area, buf);
     }
 }

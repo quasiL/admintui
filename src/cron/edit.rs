@@ -1,4 +1,6 @@
+use crate::cron::utils::get_next_execution;
 use crate::cron::CronJob;
+use arboard::Clipboard;
 use ratatui::{
     crossterm::event::{self, KeyCode},
     layout::{Constraint, Flex, Layout, Rect},
@@ -9,7 +11,7 @@ use ratatui::{
 };
 use regex::Regex;
 use style::palette::tailwind;
-use tui_textarea::TextArea;
+use tui_textarea::{CursorMove, TextArea};
 
 pub enum ActiveInput {
     CronNotation,
@@ -35,6 +37,7 @@ pub struct Inputs {
     pub cron_notation_value: String,
     pub job_value: String,
     pub job_description_value: String,
+    pub is_new: bool,
 }
 
 impl Default for Inputs {
@@ -47,6 +50,7 @@ impl Default for Inputs {
             cron_notation_value: String::new(),
             job_value: String::new(),
             job_description_value: String::new(),
+            is_new: true,
         }
     }
 }
@@ -56,40 +60,48 @@ impl Inputs {
         &mut self,
         key: event::KeyEvent,
         show_popup: &mut bool,
-        selected_cron: &mut CronJob,
+        cron_jobs: &mut Vec<CronJob>,
+        table_state: &mut TableState,
     ) {
+        let ctrl_pressed = key.modifiers.contains(event::KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Tab => {
                 self.current_input = self.current_input.next();
             }
             KeyCode::Esc => {
                 *show_popup = false;
-                let cron_notation_input = &mut self.cron_notation;
-                cron_notation_input.delete_line_by_head();
-                let job_input = &mut self.job;
-                job_input.delete_line_by_head();
-                let job_description_input = &mut self.job_description;
-                job_description_input.delete_line_by_head();
+                // let cron_notation_input = &mut self.cron_notation;
+                // cron_notation_input.delete_line_by_head();
+                // let job_input = &mut self.job;
+                // job_input.delete_line_by_head();
+                // let job_description_input = &mut self.job_description;
+                // job_description_input.delete_line_by_head();
+                self.flash_inputs();
+                self.flash_values();
 
                 self.current_input = ActiveInput::CronNotation;
             }
             KeyCode::Enter => {
-                selected_cron.cron_notation = format!("{}", self.cron_notation_value);
-                selected_cron.job = format!("{}", self.job_value);
-                selected_cron.job_description = format!("{}", self.job_description_value);
+                if self.is_new {
+                    cron_jobs.push(self.create_new_cron());
+                    table_state.select(Some(cron_jobs.len() - 1));
+                } else {
+                    self.update_selected_cron(&mut cron_jobs[table_state.selected().unwrap()]);
+                }
+                *show_popup = false;
+            }
+            KeyCode::Char('v') if ctrl_pressed => {
+                self.handle_paste();
             }
             _ => match self.current_input {
                 ActiveInput::CronNotation => {
                     let cron_input = &mut self.cron_notation;
                     let cron_value = &mut self.cron_notation_value;
-
                     if cron_input.input(key) {
                         validate(cron_input);
+                        cron_value.clear();
                         if let Some(first_line) = cron_input.lines().get(0) {
-                            cron_value.clear();
                             cron_value.push_str(first_line);
-                        } else {
-                            cron_value.clear();
                         }
                     }
                 }
@@ -97,11 +109,9 @@ impl Inputs {
                     let job_input = &mut self.job;
                     let job_value = &mut self.job_value;
                     if job_input.input(key) {
+                        job_value.clear();
                         if let Some(first_line) = job_input.lines().get(0) {
-                            job_value.clear();
                             job_value.push_str(first_line);
-                        } else {
-                            job_value.clear();
                         }
                     }
                 }
@@ -109,11 +119,9 @@ impl Inputs {
                     let job_description_input = &mut self.job_description;
                     let job_description_value = &mut self.job_description_value;
                     if job_description_input.input(key) {
+                        job_description_value.clear();
                         if let Some(first_line) = job_description_input.lines().get(0) {
-                            job_description_value.clear();
                             job_description_value.push_str(first_line);
-                        } else {
-                            job_description_value.clear();
                         }
                     }
                 }
@@ -121,42 +129,86 @@ impl Inputs {
         }
     }
 
-    pub fn setup_inputs(&mut self, selected_cron: &CronJob) {
-        let cron_notation_value = &selected_cron.cron_notation;
-        let cron_notation_input = &mut self.cron_notation;
-        cron_notation_input.delete_line_by_head();
-        cron_notation_input.insert_str(cron_notation_value);
-        self.cron_notation_value = cron_notation_value.to_string();
-
-        let job_value = &selected_cron.job;
-        let job_input = &mut self.job;
-        job_input.delete_line_by_head();
-        job_input.insert_str(job_value);
-        self.job_value = job_value.to_string();
-
-        let job_description_value = &selected_cron.job_description;
-        let job_description_input = &mut self.job_description;
-        job_description_input.delete_line_by_head();
-        job_description_input.insert_str(job_description_value);
-        self.job_description_value = job_description_value.to_string();
+    fn flash_inputs(&mut self) {
+        self.cron_notation.delete_line_by_head();
+        self.job.delete_line_by_head();
+        self.job_description.delete_line_by_head();
     }
 
-    pub fn first_render(&mut self) {
-        let cron_input = &mut self.cron_notation;
-        cron_input.set_block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::LightCyan)),
-        );
+    fn flash_values(&mut self) {
+        self.cron_notation_value.clear();
+        self.job_value.clear();
+        self.job_description_value.clear();
     }
 
-    pub fn render_inputs(
-        &mut self,
-        area: Rect,
-        buf: &mut Buffer,
-        state: &TableState,
-        items: &[CronJob],
-    ) {
+    pub fn init_empty(&mut self) {
+        self.is_new = true;
+        self.flash_inputs();
+        self.flash_values();
+    }
+
+    pub fn init(&mut self, cron_jobs: &mut Vec<CronJob>, table_state: &mut TableState) {
+        self.flash_inputs();
+        self.flash_values();
+
+        if !self.is_new {
+            let selected_cron = &mut cron_jobs[table_state.selected().unwrap()];
+            self.cron_notation.insert_str(&selected_cron.cron_notation);
+            self.job.insert_str(&selected_cron.job);
+            self.job_description
+                .insert_str(&selected_cron.job_description);
+
+            self.cron_notation_value = selected_cron.cron_notation.to_string();
+            self.job_value = selected_cron.job.to_string();
+            self.job_description_value = selected_cron.job_description.to_string();
+        }
+    }
+
+    fn create_new_cron(&mut self) -> CronJob {
+        let mut new_cron = CronJob::default();
+        new_cron.cron_notation = format!("{}", self.cron_notation_value);
+        new_cron.job = format!("{}", self.job_value);
+        new_cron.next_execution = get_next_execution(&self.cron_notation_value);
+        new_cron.job_description = format!("{}", self.job_description_value);
+        new_cron
+    }
+
+    fn update_selected_cron(&mut self, selected_cron: &mut CronJob) {
+        selected_cron.cron_notation = format!("{}", self.cron_notation_value);
+        selected_cron.job = format!("{}", self.job_value);
+        selected_cron.job_description = format!("{}", self.job_description_value);
+    }
+
+    fn handle_paste(&mut self) {
+        let mut clipboard = Clipboard::new().unwrap();
+
+        match self.current_input {
+            ActiveInput::CronNotation => {
+                self.cron_notation.move_cursor(CursorMove::End);
+                self.cron_notation.insert_str(clipboard.get_text().unwrap());
+            }
+            ActiveInput::Job => {
+                self.job.move_cursor(CursorMove::End);
+                self.job.insert_str(clipboard.get_text().unwrap());
+            }
+            ActiveInput::JobDescription => {
+                self.job_description.move_cursor(CursorMove::End);
+                self.job_description
+                    .insert_str(clipboard.get_text().unwrap());
+            }
+        }
+    }
+
+    // pub fn first_render(&mut self) {
+    //     let cron_input = &mut self.cron_notation;
+    //     cron_input.set_block(
+    //         Block::default()
+    //             .borders(Borders::ALL)
+    //             .border_style(Style::default().fg(Color::LightCyan)),
+    //     );
+    // }
+
+    pub fn render_inputs(&mut self, area: Rect, buf: &mut Buffer) {
         let area = popup_area(area, 80);
         Widget::render(Clear, area, buf);
 
@@ -177,8 +229,6 @@ impl Inputs {
         .flex(Flex::Start);
         let [title, cron_notation_area, job_area, description_area] = vertical.areas(area);
 
-        //let selected_index = state.selected().unwrap();
-        //let selected_cron = &items[selected_index];
         let selected_cron_notation = convert_to_human_readable(self.cron_notation_value.as_str());
 
         let cron_info = Paragraph::new(Text::from_iter([selected_cron_notation]))

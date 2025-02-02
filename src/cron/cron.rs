@@ -1,8 +1,7 @@
 use crate::app::Screen;
+use crate::cron::utils::get_next_execution;
 use crate::cron::{Inputs, TableColors};
 use crate::menu::MainMenu;
-use chrono::{DateTime, Utc};
-use cron::Schedule;
 use ratatui::{
     crossterm::event::{self, KeyCode},
     layout::{Constraint, Layout, Margin, Rect},
@@ -10,19 +9,18 @@ use ratatui::{
     style::{Color, Modifier, Style, Stylize},
     text::Text,
     widgets::{
-        Block, BorderType, Borders, Cell, HighlightSpacing, Paragraph, Row, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Table, TableState,
+        Block, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, TableState,
     },
 };
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
-use std::str::FromStr;
 use unicode_width::UnicodeWidthStr;
 
 const INFO_TEXT: [&str; 3] = [
     "",
-    "(Esc) quit | (↓↑) move up and down | (Enter) select | (n) new",
+    "(Esc) quit | (↓↑) move up and down | (Enter) select | (d) delete | (n) new",
     "",
 ];
 const ITEM_HEIGHT: usize = 4;
@@ -34,6 +32,17 @@ pub struct CronJob {
     pub next_execution: String,
 }
 
+impl Default for CronJob {
+    fn default() -> Self {
+        Self {
+            cron_notation: String::new(),
+            job: String::new(),
+            job_description: String::new(),
+            next_execution: String::new(),
+        }
+    }
+}
+
 impl CronJob {
     const fn ref_array(&self) -> [&String; 3] {
         [
@@ -43,7 +52,7 @@ impl CronJob {
         ]
     }
 
-    pub fn cron_notation(&self) -> &str {
+    pub fn _cron_notation(&self) -> &str {
         &self.cron_notation
     }
 
@@ -51,7 +60,7 @@ impl CronJob {
         &self.next_execution
     }
 
-    pub fn job_description(&self) -> &str {
+    pub fn _job_description(&self) -> &str {
         &self.job_description
     }
 
@@ -79,11 +88,7 @@ impl CronJob {
 
                 let cron_notation = parts[..5].join(" ");
                 let job = parts[5..].join(" ");
-
-                let next_execution = format!("* {}", cron_notation);
-                let modified_next_execution = get_next_execution(&next_execution)
-                    .map(|dt| dt.to_string())
-                    .unwrap_or_else(|| "N/A".to_string());
+                let modified_next_execution = get_next_execution(&cron_notation);
 
                 cron_jobs.push(CronJob {
                     cron_notation,
@@ -96,11 +101,6 @@ impl CronJob {
 
         Ok(cron_jobs)
     }
-}
-
-fn get_next_execution(cron_expr: &str) -> Option<DateTime<Utc>> {
-    let schedule = Schedule::from_str(cron_expr).ok()?;
-    schedule.upcoming(Utc).next()
 }
 
 pub struct CronTable {
@@ -123,8 +123,7 @@ impl Widget for &mut CronTable {
         self.render_footer(rects[1], buf);
 
         if self.show_popup {
-            self.inputs
-                .render_inputs(rects[0], buf, &self.state, &self.items);
+            self.inputs.render_inputs(rects[0], buf);
         }
     }
 }
@@ -144,36 +143,48 @@ impl CronTable {
     }
 
     pub fn handle_screen(&mut self, key: event::KeyEvent) -> Option<Screen> {
-        if self.show_popup == true {
-            self.inputs.handle_inputs(
-                key,
-                &mut self.show_popup,
-                &mut self.items[self.state.selected().unwrap()],
-            );
+        if key.code == KeyCode::Esc && self.show_popup == false {
+            Some(Screen::MainMenu(MainMenu::new()))
+        } else {
+            self.handle_keys(key);
             None
+        }
+    }
+
+    fn handle_keys(&mut self, key: event::KeyEvent) {
+        if self.show_popup == true {
+            self.inputs
+                .handle_inputs(key, &mut self.show_popup, &mut self.items, &mut self.state);
         } else {
             match key.code {
-                KeyCode::Esc => Some(Screen::MainMenu(MainMenu::new())),
                 KeyCode::Char('j') | KeyCode::Down => {
                     self.next_row();
-                    None
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.previous_row();
-                    None
+                }
+                KeyCode::Char('g') | KeyCode::Home => {
+                    self.first_row();
+                }
+                KeyCode::Char('G') | KeyCode::End => {
+                    self.last_row();
                 }
                 KeyCode::Char('n') => {
                     self.show_popup = true;
-                    None
+                    self.inputs.init_empty();
+                }
+                KeyCode::Char('d') => {
+                    let index = self.state.selected().unwrap();
+                    self.items.remove(index);
                 }
                 KeyCode::Enter => {
-                    self.show_popup = true;
-                    self.inputs.first_render();
-                    self.inputs
-                        .setup_inputs(&self.items[self.state.selected().unwrap()]);
-                    None
+                    if !self.items.is_empty() {
+                        self.show_popup = true;
+                        self.inputs.is_new = false;
+                        self.inputs.init(&mut self.items, &mut self.state);
+                    }
                 }
-                _ => None,
+                _ => {}
             }
         }
     }
@@ -206,6 +217,19 @@ impl CronTable {
         };
         self.state.select(Some(i));
         self.scroll_state = self.scroll_state.position(i * ITEM_HEIGHT);
+    }
+
+    fn first_row(&mut self) {
+        self.state.select(Some(0));
+        self.scroll_state = self.scroll_state.position(0);
+    }
+
+    fn last_row(&mut self) {
+        if !self.items.is_empty() {
+            let last_index = self.items.len() - 1;
+            self.state.select(Some(last_index));
+            self.scroll_state = self.scroll_state.position(last_index * ITEM_HEIGHT);
+        }
     }
 
     fn render_table(&mut self, area: Rect, buf: &mut Buffer) {
