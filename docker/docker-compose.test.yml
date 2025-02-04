@@ -1,0 +1,14 @@
+services:
+  mysql:
+    image: mysql:${MYSQL_IMAGE_TAG}
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ./mysql/mysql_data:/var/lib/mysql
+    networks:
+      - backend
+
+networks:
+  backend:
