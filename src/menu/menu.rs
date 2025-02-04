@@ -13,7 +13,7 @@ use ratatui::{
 
 const INFO_TEXT: [&str; 3] = [
     "",
-    "(Esc|q) quit | (↓↑) move up and down | (Enter) select",
+    "(Esc|q) Quit | (↓↑) Move up and down | (Enter) Select",
     "",
 ];
 
@@ -43,10 +43,10 @@ impl MainMenu {
             menu_list: MenuList {
                 items: vec![
                     String::from("Cron Table"),
-                    String::from("Main 2"),
-                    String::from("Main 3"),
-                    String::from("Main 4"),
-                    String::from("Main 5"),
+                    String::from("MySQL"),
+                    String::from("Firewall"),
+                    String::from("Webserver"),
+                    String::from("Settings"),
                 ],
                 state: ListState::default().with_selected(Some(0)),
             },

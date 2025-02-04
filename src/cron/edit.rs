@@ -1,17 +1,23 @@
-use crate::cron::utils::get_next_execution;
+use crate::cron::utils::{convert_to_human_readable, get_next_execution};
 use crate::cron::CronJob;
 use arboard::Clipboard;
+use ratatui::style::Modifier;
 use ratatui::{
     crossterm::event::{self, KeyCode},
     layout::{Constraint, Flex, Layout, Rect},
     prelude::{Buffer, Widget},
-    style::{self, Color, Style, Stylize},
-    text::Text,
+    style::{self, Color, Style},
+    text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, TableState},
 };
-use regex::Regex;
 use style::palette::tailwind;
 use tui_textarea::{CursorMove, TextArea};
+
+const INFO_TEXT: [&str; 3] = [
+    "",
+    "(Esc) Quit without saving | (Tab) Move to the next field | (Enter) Save and quit",
+    "",
+];
 
 pub enum ActiveInput {
     CronNotation,
@@ -70,25 +76,20 @@ impl Inputs {
             }
             KeyCode::Esc => {
                 *show_popup = false;
-                // let cron_notation_input = &mut self.cron_notation;
-                // cron_notation_input.delete_line_by_head();
-                // let job_input = &mut self.job;
-                // job_input.delete_line_by_head();
-                // let job_description_input = &mut self.job_description;
-                // job_description_input.delete_line_by_head();
                 self.flash_inputs();
                 self.flash_values();
-
                 self.current_input = ActiveInput::CronNotation;
             }
             KeyCode::Enter => {
-                if self.is_new {
-                    cron_jobs.push(self.create_new_cron());
-                    table_state.select(Some(cron_jobs.len() - 1));
-                } else {
-                    self.update_selected_cron(&mut cron_jobs[table_state.selected().unwrap()]);
+                if validate(&mut self.cron_notation) {
+                    if self.is_new {
+                        cron_jobs.push(self.create_new_cron());
+                        table_state.select(Some(cron_jobs.len() - 1));
+                    } else {
+                        self.update_selected_cron(&mut cron_jobs[table_state.selected().unwrap()]);
+                    }
+                    *show_popup = false;
                 }
-                *show_popup = false;
             }
             KeyCode::Char('v') if ctrl_pressed => {
                 self.handle_paste();
@@ -98,7 +99,6 @@ impl Inputs {
                     let cron_input = &mut self.cron_notation;
                     let cron_value = &mut self.cron_notation_value;
                     if cron_input.input(key) {
-                        validate(cron_input);
                         cron_value.clear();
                         if let Some(first_line) = cron_input.lines().get(0) {
                             cron_value.push_str(first_line);
@@ -145,11 +145,15 @@ impl Inputs {
         self.is_new = true;
         self.flash_inputs();
         self.flash_values();
+        self.current_input = ActiveInput::CronNotation;
+        self.initial_render();
     }
 
     pub fn init(&mut self, cron_jobs: &mut Vec<CronJob>, table_state: &mut TableState) {
         self.flash_inputs();
         self.flash_values();
+        self.current_input = ActiveInput::CronNotation;
+        self.initial_render();
 
         if !self.is_new {
             let selected_cron = &mut cron_jobs[table_state.selected().unwrap()];
@@ -199,65 +203,118 @@ impl Inputs {
         }
     }
 
-    // pub fn first_render(&mut self) {
-    //     let cron_input = &mut self.cron_notation;
-    //     cron_input.set_block(
-    //         Block::default()
-    //             .borders(Borders::ALL)
-    //             .border_style(Style::default().fg(Color::LightCyan)),
-    //     );
-    // }
+    fn initial_render(&mut self) {
+        let cron_input = &mut self.cron_notation;
+        let job_input = &mut self.job;
+        let description_input = &mut self.job_description;
+
+        cron_input.set_placeholder_text("Enter a cron notation");
+        cron_input.set_cursor_line_style(Style::default());
+        cron_input.set_block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::LightCyan)),
+        );
+
+        job_input.set_placeholder_text("Enter a job");
+        job_input.set_cursor_line_style(Style::default());
+
+        description_input.set_placeholder_text("Enter a description");
+        description_input.set_cursor_line_style(Style::default());
+    }
 
     pub fn render_inputs(&mut self, area: Rect, buf: &mut Buffer) {
-        let area = popup_area(area, 80);
+        let area = popup_area(area, 70);
         Widget::render(Clear, area, buf);
 
-        let block = Block::default()
-            .bg(tailwind::SLATE.c700)
+        let layout = Layout::vertical([Constraint::Length(17), Constraint::Length(3)])
+            .flex(Flex::SpaceBetween);
+
+        let [main_area, footer_area] = layout.areas(area);
+
+        let main_block = Block::default()
+            .style(Style::default().bg(tailwind::BLUE.c950))
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
             .border_style(Color::LightBlue);
-        block.render(area, buf);
 
-        let vertical = Layout::vertical([
-            Constraint::Length(3),
+        Widget::render(main_block, main_area, buf);
+
+        let main = Layout::vertical([
+            Constraint::Length(4),
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
         ])
         .margin(2)
         .flex(Flex::Start);
-        let [title, cron_notation_area, job_area, description_area] = vertical.areas(area);
+        let [title_area, cron_notation_area, job_area, description_area] = main.areas(main_area);
+
+        let footer = Layout::vertical([Constraint::Length(3)]);
+        let [info_area] = footer.areas(footer_area);
 
         let selected_cron_notation = convert_to_human_readable(self.cron_notation_value.as_str());
 
-        let cron_info = Paragraph::new(Text::from_iter([selected_cron_notation]))
+        let wrapped_text: Vec<Line> = selected_cron_notation
+            .chars()
+            .collect::<Vec<_>>()
+            .chunks(100)
+            .map(|chunk| {
+                Line::from(Span::styled(
+                    chunk.iter().collect::<String>(),
+                    Style::default().fg(Color::LightBlue),
+                ))
+            })
+            .collect();
+
+        let title = Paragraph::new(Text::from(wrapped_text))
             .style(Style::default().fg(Color::LightBlue))
             .centered()
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_type(BorderType::Double)
-                    .border_style(Color::LightBlue),
+                    .border_style(Style::default().fg(Color::LightBlue)),
             );
+        Widget::render(title, title_area, buf);
 
-        Widget::render(cron_info, title, buf);
+        let info = Paragraph::new(Text::from_iter(INFO_TEXT))
+            .style(Style::default().bg(tailwind::SLATE.c800))
+            .centered()
+            .block(Block::default());
+        Widget::render(info, info_area, buf);
 
-        let cron_input = &mut self.cron_notation;
+        let cron_input: &mut TextArea<'_> = &mut self.cron_notation;
         let job_input = &mut self.job;
         let description_input = &mut self.job_description;
 
         match self.current_input {
             ActiveInput::CronNotation => {
-                cron_input.set_placeholder_text("Enter a cron notation");
-                cron_input.set_cursor_line_style(Style::default());
+                if validate(cron_input) {
+                    cron_input.set_block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(Color::LightGreen))
+                            .title("Cron notation* (OK)"),
+                    );
+                    cron_input.set_cursor_style(Style::default().bg(Color::LightGreen));
+                } else {
+                    cron_input.set_block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(Color::LightRed))
+                            .title("Cron notation* (Invalid cron syntax)"),
+                    );
+                    cron_input.set_cursor_style(Style::default().bg(Color::LightRed));
+                }
                 cron_input.render(cron_notation_area, buf);
 
                 job_input.set_cursor_style(Style::default());
                 job_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray)),
+                        .border_style(Style::default().fg(Color::Gray))
+                        .title("Job"),
                 );
                 job_input.render(job_area, buf);
 
@@ -265,49 +322,66 @@ impl Inputs {
                 description_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray)),
+                        .border_style(Style::default().fg(Color::Gray))
+                        .title("Description"),
                 );
                 description_input.render(description_area, buf);
             }
             ActiveInput::Job => {
-                job_input.set_placeholder_text("Enter a job");
-                job_input.set_cursor_line_style(Style::default());
                 job_input.set_cursor_style(Style::default().bg(Color::White));
                 job_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::LightCyan)),
+                        .border_style(Style::default().fg(Color::LightCyan))
+                        .title("Job"),
                 );
                 job_input.render(job_area, buf);
 
+                cron_input.set_cursor_style(Style::default());
+                cron_input.set_block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Gray))
+                        .title("Cron notation*"),
+                );
+                cron_input.set_style(Style::default());
                 cron_input.render(cron_notation_area, buf);
 
                 description_input.set_cursor_style(Style::default());
                 description_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray)),
+                        .border_style(Style::default().fg(Color::Gray))
+                        .title("Description"),
                 );
                 description_input.render(description_area, buf);
             }
             ActiveInput::JobDescription => {
-                description_input.set_placeholder_text("Enter a description");
-                description_input.set_cursor_line_style(Style::default());
                 description_input.set_cursor_style(Style::default().bg(Color::White));
                 description_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::LightCyan)),
+                        .border_style(Style::default().fg(Color::LightCyan))
+                        .title("Description"),
                 );
                 description_input.render(description_area, buf);
 
+                cron_input.set_cursor_style(Style::default());
+                cron_input.set_block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Gray))
+                        .title("Cron notation*"),
+                );
+                cron_input.set_style(Style::default());
                 cron_input.render(cron_notation_area, buf);
 
                 job_input.set_cursor_style(Style::default());
                 job_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray)),
+                        .border_style(Style::default().fg(Color::Gray))
+                        .title("Job"),
                 );
                 job_input.render(job_area, buf);
             }
@@ -316,7 +390,7 @@ impl Inputs {
 }
 
 fn popup_area(area: Rect, percent_x: u16) -> Rect {
-    let vertical = Layout::vertical([Constraint::Max(16)]).flex(Flex::Center);
+    let vertical = Layout::vertical([Constraint::Max(20)]).flex(Flex::Center);
     let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
     let [area] = vertical.areas(area);
     let [area] = horizontal.areas(area);
@@ -338,133 +412,9 @@ fn validate(textarea: &mut TextArea) -> bool {
 
     if Schedule::from_str(modified_input.as_str()).is_err() {
         textarea.set_style(Style::default().fg(Color::LightRed));
-        textarea.set_block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::LightRed))
-                .title("ERROR: Invalid cron syntax"),
-        );
         false
     } else {
         textarea.set_style(Style::default().fg(Color::LightGreen));
-        textarea.set_block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::LightGreen))
-                .title("OK"),
-        );
         true
-    }
-}
-
-pub fn convert_to_human_readable(input: &str) -> String {
-    let cron_regex = Regex::new(r"^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)$").unwrap();
-
-    if let Some(captures) = cron_regex.captures(input.trim()) {
-        let minute = &captures[1];
-        let hour = &captures[2];
-        let day_of_month = &captures[3];
-        let month = &captures[4];
-        let day_of_week = &captures[5];
-
-        let minute_str = parse_minute(minute);
-        let hour_str = parse_hour(hour);
-        let day_of_month_str = parse_day_of_month(day_of_month);
-        let month_str = parse_month(month);
-        let day_of_week_str = parse_day_of_week(day_of_week);
-
-        return format!(
-            "At {} past {} on {} {} {}",
-            minute_str, hour_str, day_of_month_str, month_str, day_of_week_str
-        );
-    }
-
-    "Unable to parse cron expression into human-readable format.".to_string()
-}
-
-fn parse_minute(minute: &str) -> String {
-    if minute == "*" {
-        "every minute".to_string()
-    } else if minute.contains("/") {
-        format!(
-            "every {} minute(s) starting at {}",
-            &minute[2..],
-            &minute[0..1]
-        )
-    } else {
-        format!("minute {}", minute)
-    }
-}
-
-fn parse_hour(hour: &str) -> String {
-    if hour == "*" {
-        "every hour".to_string()
-    } else if hour.contains("/") {
-        format!("every {} hour(s) starting at {}", &hour[2..], &hour[0..1])
-    } else {
-        format!("hour {}", hour)
-    }
-}
-
-fn parse_day_of_month(day: &str) -> String {
-    if day == "*" {
-        "every day".to_string()
-    } else if day.contains("/") {
-        format!("every {} day(s) starting at day {}", &day[2..], &day[0..1])
-    } else {
-        format!("day-of-month {}", day)
-    }
-}
-
-fn parse_month(month: &str) -> String {
-    if month == "*" {
-        "every month".to_string()
-    } else if month.contains("/") {
-        format!(
-            "every {} month(s) starting at month {}",
-            &month[2..],
-            &month[0..1]
-        )
-    } else {
-        format!("month {}", month)
-    }
-}
-
-fn parse_day_of_week(day: &str) -> String {
-    match day {
-        "*" => "every day of the week".to_string(),
-        "0" | "7" => "Sunday".to_string(),
-        "1" => "Monday".to_string(),
-        "2" => "Tuesday".to_string(),
-        "3" => "Wednesday".to_string(),
-        "4" => "Thursday".to_string(),
-        "5" => "Friday".to_string(),
-        "6" => "Saturday".to_string(),
-        _ if day.contains("-") => {
-            let parts: Vec<&str> = day.split('-').collect();
-            format!(
-                "every day-of-week from {} through {}",
-                day_name(parts[0]),
-                day_name(parts[1])
-            )
-        }
-        _ if day.contains(",") => {
-            let days: Vec<String> = day.split(',').map(day_name).collect();
-            format!("{}", days.join(", "))
-        }
-        _ => format!("day-of-week {}", day),
-    }
-}
-
-fn day_name(day: &str) -> String {
-    match day {
-        "0" | "7" => "Sunday".to_string(),
-        "1" => "Monday".to_string(),
-        "2" => "Tuesday".to_string(),
-        "3" => "Wednesday".to_string(),
-        "4" => "Thursday".to_string(),
-        "5" => "Friday".to_string(),
-        "6" => "Saturday".to_string(),
-        _ => day.to_string(),
     }
 }

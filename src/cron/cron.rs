@@ -20,7 +20,7 @@ use unicode_width::UnicodeWidthStr;
 
 const INFO_TEXT: [&str; 3] = [
     "",
-    "(Esc) quit | (↓↑) move up and down | (Enter) select | (d) delete | (n) new",
+    "(Esc) Return to the main menu | (↓↑) Move up and down | (Enter) Select | (d) Delete selected cron | (n) Add new cron",
     "",
 ];
 const ITEM_HEIGHT: usize = 4;
