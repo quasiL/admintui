@@ -1,7 +1,6 @@
-use crate::cron::utils::{convert_to_human_readable, get_next_execution};
+use crate::cron::utils::{get_human_readable_cron, get_next_execution};
 use crate::cron::CronJob;
 use arboard::Clipboard;
-use ratatui::style::Modifier;
 use ratatui::{
     crossterm::event::{self, KeyCode},
     layout::{Constraint, Flex, Layout, Rect},
@@ -80,8 +79,8 @@ impl Inputs {
                 self.flash_values();
                 self.current_input = ActiveInput::CronNotation;
             }
-            KeyCode::Enter => {
-                if validate(&mut self.cron_notation) {
+            KeyCode::Enter => match validate(&mut self.cron_notation) {
+                Ok(_) => {
                     if self.is_new {
                         cron_jobs.push(self.create_new_cron());
                         table_state.select(Some(cron_jobs.len() - 1));
@@ -90,7 +89,8 @@ impl Inputs {
                     }
                     *show_popup = false;
                 }
-            }
+                Err(ValidationError::InvalidCronExpression(_)) => {}
+            },
             KeyCode::Char('v') if ctrl_pressed => {
                 self.handle_paste();
             }
@@ -131,8 +131,11 @@ impl Inputs {
 
     fn flash_inputs(&mut self) {
         self.cron_notation.delete_line_by_head();
+        self.cron_notation.delete_line_by_end();
         self.job.delete_line_by_head();
+        self.job.delete_line_by_end();
         self.job_description.delete_line_by_head();
+        self.job_description.delete_line_by_end();
     }
 
     fn flash_values(&mut self) {
@@ -181,6 +184,7 @@ impl Inputs {
         selected_cron.cron_notation = format!("{}", self.cron_notation_value);
         selected_cron.job = format!("{}", self.job_value);
         selected_cron.job_description = format!("{}", self.job_description_value);
+        selected_cron.next_execution = get_next_execution(&self.cron_notation_value);
     }
 
     fn handle_paste(&mut self) {
@@ -253,7 +257,8 @@ impl Inputs {
         let footer = Layout::vertical([Constraint::Length(3)]);
         let [info_area] = footer.areas(footer_area);
 
-        let selected_cron_notation = convert_to_human_readable(self.cron_notation_value.as_str());
+        let selected_cron_notation =
+            get_human_readable_cron(self.cron_notation_value.as_str()).unwrap();
 
         let wrapped_text: Vec<Line> = selected_cron_notation
             .chars()
@@ -290,22 +295,25 @@ impl Inputs {
 
         match self.current_input {
             ActiveInput::CronNotation => {
-                if validate(cron_input) {
-                    cron_input.set_block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .border_style(Style::default().fg(Color::LightGreen))
-                            .title("Cron notation* (OK)"),
-                    );
-                    cron_input.set_cursor_style(Style::default().bg(Color::LightGreen));
-                } else {
-                    cron_input.set_block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .border_style(Style::default().fg(Color::LightRed))
-                            .title("Cron notation* (Invalid cron syntax)"),
-                    );
-                    cron_input.set_cursor_style(Style::default().bg(Color::LightRed));
+                match validate(cron_input) {
+                    Ok(_) => {
+                        cron_input.set_block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .border_style(Style::default().fg(Color::LightGreen))
+                                .title("Cron notation* (OK)"),
+                        );
+                        cron_input.set_cursor_style(Style::default().bg(Color::LightGreen));
+                    }
+                    Err(ValidationError::InvalidCronExpression(message)) => {
+                        cron_input.set_block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .border_style(Style::default().fg(Color::LightRed))
+                                .title(format!("Cron notation* ({})", message)),
+                        );
+                        cron_input.set_cursor_style(Style::default().bg(Color::LightRed));
+                    }
                 }
                 cron_input.render(cron_notation_area, buf);
 
@@ -397,9 +405,14 @@ fn popup_area(area: Rect, percent_x: u16) -> Rect {
     area
 }
 
-fn validate(textarea: &mut TextArea) -> bool {
-    use cron::Schedule;
-    use std::str::FromStr;
+#[derive(Debug)]
+pub enum ValidationError {
+    InvalidCronExpression(String),
+}
+
+fn validate(textarea: &mut TextArea) -> Result<(), ValidationError> {
+    use chrono::Utc;
+    use cron_parser::parse;
 
     let input = textarea
         .lines()
@@ -408,13 +421,18 @@ fn validate(textarea: &mut TextArea) -> bool {
         .unwrap_or("")
         .trim();
 
-    let modified_input = format!("* {}", input);
+    let now = Utc::now();
 
-    if Schedule::from_str(modified_input.as_str()).is_err() {
-        textarea.set_style(Style::default().fg(Color::LightRed));
-        false
-    } else {
-        textarea.set_style(Style::default().fg(Color::LightGreen));
-        true
+    match parse(input, &now) {
+        Ok(_) => {
+            textarea.set_style(Style::default().fg(Color::LightGreen));
+            Ok(())
+        }
+        Err(_) => {
+            textarea.set_style(Style::default().fg(Color::LightRed));
+            Err(ValidationError::InvalidCronExpression(
+                "Invalid cron expression".to_string(),
+            ))
+        }
     }
 }

@@ -3,7 +3,7 @@ use crate::cron::CronTable;
 use crate::menu::MenuStyles;
 use ratatui::{
     buffer::Buffer,
-    crossterm::event::{self, KeyCode},
+    crossterm::event::{self, KeyCode, MouseEvent, MouseEventKind},
     layout::{Constraint, Layout, Rect},
     style::Stylize,
     symbols,
@@ -42,11 +42,11 @@ impl MainMenu {
         Self {
             menu_list: MenuList {
                 items: vec![
-                    String::from("Cron Table"),
-                    String::from("MySQL"),
-                    String::from("Firewall"),
-                    String::from("Webserver"),
-                    String::from("Settings"),
+                    String::from("🕜 Cron Table"),
+                    String::from("📒 MySQL"),
+                    String::from("🔒 Firewall"),
+                    String::from("🌎 Webserver"),
+                    String::from("🔧 Settings"),
                 ],
                 state: ListState::default().with_selected(Some(0)),
             },
@@ -54,15 +54,44 @@ impl MainMenu {
         }
     }
 
-    pub fn handle_screen(&mut self, key: event::KeyEvent) -> Option<Screen> {
+    pub fn handle_screen(
+        &mut self,
+        key: event::KeyEvent,
+        mouse: Option<MouseEvent>,
+    ) -> Option<Screen> {
         if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
             Some(Screen::Quit)
         } else if key.code == KeyCode::Enter {
             self.process_select()
+        } else if let Some(mouse_event) = mouse {
+            self.handle_mouse(mouse_event)
         } else {
             self.handle_keys(key);
             None
         }
+    }
+
+    fn handle_mouse(&mut self, mouse_event: MouseEvent) -> Option<Screen> {
+        match mouse_event.kind {
+            MouseEventKind::Down(_) => {
+                let menu_start_row = 2;
+                let menu_height = self.menu_list.items.len();
+                let item_vertical_span: usize = 3;
+
+                if mouse_event.row >= menu_start_row
+                    && mouse_event.row
+                        < menu_start_row + menu_height as u16 * item_vertical_span as u16
+                {
+                    let selected_index =
+                        (mouse_event.row as usize - menu_start_row as usize) / item_vertical_span;
+
+                    self.menu_list.state.select(Some(selected_index));
+                    return self.process_select();
+                }
+            }
+            _ => {}
+        }
+        None
     }
 
     fn process_select(&mut self) -> Option<Screen> {

@@ -3,7 +3,7 @@ use crate::menu::MainMenu;
 use ratatui::{
     backend::Backend,
     buffer::Buffer,
-    crossterm::event::{self, Event},
+    crossterm::event::{self, Event, KeyCode, KeyEvent, MouseEvent},
     layout::Rect,
     widgets::Widget,
     Terminal,
@@ -46,22 +46,33 @@ impl App {
                 Screen::Quit => break,
                 _ => (),
             }
-            if let Event::Key(key) = event::read()? {
-                self.handle_event(key.into());
+            // if let Event::Key(key) = event::read()? {
+            //     self.handle_event(key.into());
+            // }
+            match event::read()? {
+                Event::Key(key) => {
+                    self.handle_event(key.into(), None);
+                }
+                Event::Mouse(mouse_event) => {
+                    let dummy_key_event =
+                        KeyEvent::new(KeyCode::Null, event::KeyModifiers::empty());
+                    self.handle_event(dummy_key_event, Some(mouse_event));
+                }
+                _ => (),
             }
         }
         Ok(())
     }
 
-    fn handle_event(&mut self, key: event::KeyEvent) {
+    fn handle_event(&mut self, key: event::KeyEvent, mouse: Option<MouseEvent>) {
         match &mut self.screen {
             Screen::MainMenu(menu) => {
-                if let Some(menu_screen) = menu.handle_screen(key) {
+                if let Some(menu_screen) = menu.handle_screen(key, mouse) {
                     self.screen = menu_screen;
                 }
             }
             Screen::CronTable(cron) => {
-                if let Some(cron_screen) = cron.handle_screen(key) {
+                if let Some(cron_screen) = cron.handle_screen(key, mouse) {
                     self.screen = cron_screen;
                 }
             }

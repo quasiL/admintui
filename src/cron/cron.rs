@@ -3,7 +3,7 @@ use crate::cron::utils::get_next_execution;
 use crate::cron::{Inputs, TableColors};
 use crate::menu::MainMenu;
 use ratatui::{
-    crossterm::event::{self, KeyCode},
+    crossterm::event::{self, KeyCode, MouseEvent},
     layout::{Constraint, Layout, Margin, Rect},
     prelude::{Buffer, StatefulWidget, Widget},
     style::{Color, Modifier, Style, Stylize},
@@ -50,18 +50,6 @@ impl CronJob {
             &self.next_execution,
             &self.job_description,
         ]
-    }
-
-    pub fn _cron_notation(&self) -> &str {
-        &self.cron_notation
-    }
-
-    fn _next_execution(&self) -> &str {
-        &self.next_execution
-    }
-
-    pub fn _job_description(&self) -> &str {
-        &self.job_description
     }
 
     fn from_crontab(file_path: &str) -> Result<Vec<CronJob>, io::Error> {
@@ -142,7 +130,11 @@ impl CronTable {
         }
     }
 
-    pub fn handle_screen(&mut self, key: event::KeyEvent) -> Option<Screen> {
+    pub fn handle_screen(
+        &mut self,
+        key: event::KeyEvent,
+        _mouse: Option<MouseEvent>,
+    ) -> Option<Screen> {
         if key.code == KeyCode::Esc && self.show_popup == false {
             Some(Screen::MainMenu(MainMenu::new()))
         } else {

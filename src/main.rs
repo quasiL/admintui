@@ -11,6 +11,7 @@ use ratatui::{
 };
 
 mod app;
+mod config;
 mod cron;
 mod menu;
 use app::App;
