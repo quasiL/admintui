@@ -1,15 +1,14 @@
-use crate::cron::utils::{get_human_readable_cron, get_next_execution};
-use crate::cron::CronJob;
+use crate::cron::utils::{get_human_readable_cron, get_next_execution, save_to_crontab};
+use crate::cron::{CronJob, EditWindowStyles};
 use arboard::Clipboard;
 use ratatui::{
     crossterm::event::{self, KeyCode},
     layout::{Constraint, Flex, Layout, Rect},
     prelude::{Buffer, Widget},
-    style::{self, Color, Style},
+    style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, TableState},
 };
-use style::palette::tailwind;
 use tui_textarea::{CursorMove, TextArea};
 
 const INFO_TEXT: [&str; 3] = [
@@ -35,6 +34,7 @@ impl ActiveInput {
 }
 
 pub struct Inputs {
+    styles: EditWindowStyles,
     pub cron_notation: TextArea<'static>,
     pub job: TextArea<'static>,
     pub job_description: TextArea<'static>,
@@ -48,6 +48,7 @@ pub struct Inputs {
 impl Default for Inputs {
     fn default() -> Self {
         Self {
+            styles: EditWindowStyles::new(),
             cron_notation: TextArea::default(),
             job: TextArea::default(),
             job_description: TextArea::default(),
@@ -87,9 +88,10 @@ impl Inputs {
                     } else {
                         self.update_selected_cron(&mut cron_jobs[table_state.selected().unwrap()]);
                     }
-                    CronJob::save_to_crontab(cron_jobs).unwrap_or_else(|err| {
+                    save_to_crontab(cron_jobs).unwrap_or_else(|err| {
                         eprint!("Error saving to crontab: {}", err);
                     });
+
                     *show_popup = false;
                 }
                 Err(ValidationError::InvalidCronExpression(_)) => {}
@@ -222,7 +224,7 @@ impl Inputs {
         cron_input.set_block(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::LightCyan)),
+                .border_style(self.styles.selected_input_border_style),
         );
 
         job_input.set_placeholder_text("Enter a job");
@@ -242,10 +244,10 @@ impl Inputs {
         let [main_area, footer_area] = layout.areas(area);
 
         let main_block = Block::default()
-            .style(Style::default().bg(tailwind::BLUE.c950))
+            .style(self.styles.window_style)
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .border_style(Color::LightBlue);
+            .border_style(self.styles.window_border_style);
 
         Widget::render(main_block, main_area, buf);
 
@@ -272,24 +274,24 @@ impl Inputs {
             .map(|chunk| {
                 Line::from(Span::styled(
                     chunk.iter().collect::<String>(),
-                    Style::default().fg(Color::LightBlue),
+                    self.styles.title_style,
                 ))
             })
             .collect();
 
         let title = Paragraph::new(Text::from(wrapped_text))
-            .style(Style::default().fg(Color::LightBlue))
+            .style(self.styles.title_style)
             .centered()
             .block(
                 Block::default()
                     .borders(Borders::ALL)
                     .border_type(BorderType::Double)
-                    .border_style(Style::default().fg(Color::LightBlue)),
+                    .border_style(self.styles.title_border_style),
             );
         Widget::render(title, title_area, buf);
 
         let info = Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(Style::default().bg(tailwind::SLATE.c800))
+            .style(self.styles.footer_style)
             .centered()
             .block(Block::default());
         Widget::render(info, info_area, buf);
@@ -305,19 +307,19 @@ impl Inputs {
                         cron_input.set_block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .border_style(Style::default().fg(Color::LightGreen))
+                                .border_style(self.styles.valid_input_style)
                                 .title("Cron notation* (OK)"),
                         );
-                        cron_input.set_cursor_style(Style::default().bg(Color::LightGreen));
+                        cron_input.set_cursor_style(self.styles.valid_cursor_style);
                     }
                     Err(ValidationError::InvalidCronExpression(message)) => {
                         cron_input.set_block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .border_style(Style::default().fg(Color::LightRed))
+                                .border_style(self.styles.invalid_input_style)
                                 .title(format!("Cron notation* ({})", message)),
                         );
-                        cron_input.set_cursor_style(Style::default().bg(Color::LightRed));
+                        cron_input.set_cursor_style(self.styles.invalid_cursor_style);
                     }
                 }
                 cron_input.render(cron_notation_area, buf);
@@ -326,7 +328,7 @@ impl Inputs {
                 job_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray))
+                        .border_style(self.styles.unselected_input_border_style)
                         .title("Job"),
                 );
                 job_input.render(job_area, buf);
@@ -335,17 +337,17 @@ impl Inputs {
                 description_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray))
+                        .border_style(self.styles.unselected_input_border_style)
                         .title("Description"),
                 );
                 description_input.render(description_area, buf);
             }
             ActiveInput::Job => {
-                job_input.set_cursor_style(Style::default().bg(Color::White));
+                job_input.set_cursor_style(self.styles.cursor_style);
                 job_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::LightCyan))
+                        .border_style(self.styles.selected_input_border_style)
                         .title("Job"),
                 );
                 job_input.render(job_area, buf);
@@ -354,7 +356,7 @@ impl Inputs {
                 cron_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray))
+                        .border_style(self.styles.unselected_input_border_style)
                         .title("Cron notation*"),
                 );
                 cron_input.set_style(Style::default());
@@ -364,17 +366,17 @@ impl Inputs {
                 description_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray))
+                        .border_style(self.styles.unselected_input_border_style)
                         .title("Description"),
                 );
                 description_input.render(description_area, buf);
             }
             ActiveInput::JobDescription => {
-                description_input.set_cursor_style(Style::default().bg(Color::White));
+                description_input.set_cursor_style(self.styles.cursor_style);
                 description_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::LightCyan))
+                        .border_style(self.styles.selected_input_border_style)
                         .title("Description"),
                 );
                 description_input.render(description_area, buf);
@@ -383,7 +385,7 @@ impl Inputs {
                 cron_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray))
+                        .border_style(self.styles.unselected_input_border_style)
                         .title("Cron notation*"),
                 );
                 cron_input.set_style(Style::default());
@@ -393,7 +395,7 @@ impl Inputs {
                 job_input.set_block(
                     Block::default()
                         .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Gray))
+                        .border_style(self.styles.unselected_input_border_style)
                         .title("Job"),
                 );
                 job_input.render(job_area, buf);

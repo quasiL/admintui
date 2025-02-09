@@ -6,6 +6,6 @@ pub mod edit;
 pub use edit::Inputs;
 
 pub mod styles;
-pub use styles::TableColors;
+pub use styles::{EditWindowStyles, TableStyles};
 
 pub mod utils;

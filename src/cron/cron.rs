@@ -1,20 +1,17 @@
 use crate::app::Screen;
-use crate::cron::utils::get_next_execution;
-use crate::cron::{Inputs, TableColors};
+use crate::cron::utils::{from_crontab, save_to_crontab};
+use crate::cron::{Inputs, TableStyles};
 use crate::menu::MainMenu;
 use ratatui::{
     crossterm::event::{self, KeyCode, MouseEvent},
     layout::{Constraint, Layout, Margin, Rect},
     prelude::{Buffer, StatefulWidget, Widget},
-    style::{Color, Modifier, Style, Stylize},
     text::Text,
     widgets::{
         Block, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
         ScrollbarState, Table, TableState,
     },
 };
-use std::io::{self, BufRead, Write};
-use std::process::{Command, Stdio};
 use unicode_width::UnicodeWidthStr;
 
 const INFO_TEXT: [&str; 3] = [
@@ -59,94 +56,6 @@ impl CronJob {
             next_execution: cron_job.next_execution,
         }
     }
-
-    fn from_crontab() -> Result<Vec<CronJob>, io::Error> {
-        let output = Command::new("crontab")
-            .arg("-l")
-            .stdout(Stdio::piped())
-            .output()?;
-
-        if !output.status.success() {
-            let stderr_output = String::from_utf8_lossy(&output.stderr);
-
-            if stderr_output.contains("no crontab for") {
-                return Ok(vec![CronJob::new({
-                    CronJob {
-                        cron_notation: "User has no crontab".to_string(),
-                        job: String::new(),
-                        job_description: String::new(),
-                        next_execution: String::new(),
-                    }
-                })]);
-            }
-
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Failed to read crontab",
-            ));
-        }
-
-        let reader = io::BufReader::new(&output.stdout[..]);
-        let mut cron_jobs = Vec::new();
-        let mut comment: Option<String> = None;
-
-        for line in reader.lines() {
-            let line = line?;
-            let line = line.trim();
-
-            if line.is_empty() {
-                continue;
-            }
-
-            if line.starts_with('#') {
-                comment = Some(line.trim_start_matches('#').trim().to_string());
-            } else {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-
-                if parts.len() < 6 {
-                    continue;
-                }
-
-                let cron_notation = parts[..5].join(" ");
-                let job = parts[5..].join(" ");
-                let modified_next_execution = get_next_execution(&cron_notation);
-
-                cron_jobs.push(CronJob {
-                    cron_notation,
-                    job,
-                    job_description: comment.take().unwrap_or_else(|| String::new()),
-                    next_execution: modified_next_execution,
-                });
-            }
-        }
-
-        Ok(cron_jobs)
-    }
-
-    pub fn save_to_crontab(cron_jobs: &[CronJob]) -> io::Result<()> {
-        let mut new_crontab = String::new();
-
-        for job in cron_jobs {
-            if !job.job.is_empty() {
-                if !new_crontab.is_empty() {
-                    new_crontab.push('\n');
-                }
-                if !job.job_description.is_empty() {
-                    new_crontab.push_str(&format!("# {}\n", job.job_description));
-                }
-                new_crontab.push_str(&format!("{} {}\n", job.cron_notation, job.job));
-            }
-        }
-
-        let mut process = Command::new("crontab").stdin(Stdio::piped()).spawn()?;
-
-        if let Some(stdin) = process.stdin.as_mut() {
-            stdin.write_all(new_crontab.as_bytes())?;
-        }
-
-        process.wait()?;
-        Ok(())
-    }
 }
 
 pub struct CronTable {
@@ -154,7 +63,7 @@ pub struct CronTable {
     items: Vec<CronJob>,
     longest_item_lens: (u16, u16, u16),
     scroll_state: ScrollbarState,
-    colors: TableColors,
+    styles: TableStyles,
     show_popup: bool,
     inputs: Inputs,
 }
@@ -176,7 +85,7 @@ impl Widget for &mut CronTable {
 
 impl CronTable {
     pub fn new() -> Self {
-        let cron_jobs_vec = CronJob::from_crontab().unwrap_or_else(|err| {
+        let cron_jobs_vec = from_crontab().unwrap_or_else(|err| {
             vec![CronJob {
                 cron_notation: format!("Error: {}", err),
                 job: String::new(),
@@ -193,7 +102,7 @@ impl CronTable {
             state: TableState::default().with_selected(0),
             longest_item_lens: constraint_len_calculator(&cron_jobs_vec),
             scroll_state: ScrollbarState::new(scroll_position),
-            colors: TableColors::new(),
+            styles: TableStyles::new(),
             items: cron_jobs_vec,
             show_popup: false,
             inputs: Inputs::default(),
@@ -238,7 +147,7 @@ impl CronTable {
                 KeyCode::Char('d') => {
                     let index = self.state.selected().unwrap();
                     self.items.remove(index);
-                    CronJob::save_to_crontab(&self.items).unwrap_or_else(|err| {
+                    save_to_crontab(&self.items).unwrap_or_else(|err| {
                         eprint!("Error saving to crontab: {}", err);
                     });
                 }
@@ -298,30 +207,22 @@ impl CronTable {
     }
 
     fn render_table(&mut self, area: Rect, buf: &mut Buffer) {
-        let header_style = Style::default()
-            .fg(self.colors.header_text_color)
-            .bg(self.colors.header_color);
-        let selected_row_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_row_color);
-
         let header = ["Cron Notation", "Next Execution", "Description"]
             .into_iter()
             .map(|title| Cell::from(Text::from(format!("\n{}\n", title)))) // Adds top and bottom padding
             .collect::<Row>()
-            .style(header_style)
-            .bold()
+            .style(self.styles.header_style)
             .height(3);
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let color = match i % 2 {
-                0 => self.colors.normal_row_color,
-                _ => self.colors.alt_row_color,
+                0 => self.styles.normal_row_color,
+                _ => self.styles.alt_row_color,
             };
             let item = data.ref_array();
             item.into_iter()
                 .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
                 .collect::<Row>()
-                .style(Style::new().fg(self.colors.row_text_color).bg(color))
+                .style(self.styles.row_style.bg(color))
                 .height(4)
         });
         let bar = " █ ";
@@ -335,12 +236,16 @@ impl CronTable {
             ],
         )
         .header(header)
-        .row_highlight_style(selected_row_style)
-        .style(Style::default().bg(if (self.items.len() + 1) % 2 == 0 {
-            self.colors.alt_row_color
-        } else {
-            self.colors.normal_row_color
-        }))
+        .row_highlight_style(self.styles.selected_row_style)
+        .style(
+            self.styles
+                .row_style
+                .bg(if (self.items.len() + 1) % 2 == 0 {
+                    self.styles.alt_row_color
+                } else {
+                    self.styles.normal_row_color
+                }),
+        )
         .highlight_symbol(Text::from(vec![
             "".into(),
             bar.into(),
@@ -352,16 +257,11 @@ impl CronTable {
     }
 
     fn render_scrollbar(&mut self, area: Rect, buf: &mut Buffer) {
-        let scrollbar_style = Style::default()
-            .fg(Color::White)
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::REVERSED);
-
         let scrollbar = Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight)
             .begin_symbol(None)
             .end_symbol(None)
-            .style(scrollbar_style);
+            .style(self.styles.scrollbar_style);
 
         StatefulWidget::render(
             scrollbar,
@@ -375,10 +275,8 @@ impl CronTable {
     }
 
     fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
-        let footer_style = Style::default().bg(self.colors.footer_color);
-
         let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(footer_style)
+            .style(self.styles.footer_style)
             .centered()
             .block(Block::default());
 

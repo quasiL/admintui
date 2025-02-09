@@ -125,7 +125,7 @@ impl MainMenu {
             .borders(Borders::TOP)
             .border_set(symbols::border::EMPTY)
             .border_style(self.styles.header_style)
-            .bg(self.styles.menu_background_color);
+            .style(self.styles.menu_background_style);
 
         let items: Vec<Text> = self
             .menu_list
