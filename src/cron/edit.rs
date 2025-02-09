@@ -14,7 +14,7 @@ use tui_textarea::{CursorMove, TextArea};
 
 const INFO_TEXT: [&str; 3] = [
     "",
-    "(Esc) Quit without saving | (Tab) Move to the next field | (Enter) Save and quit",
+    "(Esc) Close without saving | (Tab) Move to the next field | (Enter) Save and close",
     "",
 ];
 
@@ -87,6 +87,9 @@ impl Inputs {
                     } else {
                         self.update_selected_cron(&mut cron_jobs[table_state.selected().unwrap()]);
                     }
+                    CronJob::save_to_crontab(cron_jobs).unwrap_or_else(|err| {
+                        eprint!("Error saving to crontab: {}", err);
+                    });
                     *show_popup = false;
                 }
                 Err(ValidationError::InvalidCronExpression(_)) => {}
@@ -172,12 +175,14 @@ impl Inputs {
     }
 
     fn create_new_cron(&mut self) -> CronJob {
-        let mut new_cron = CronJob::default();
-        new_cron.cron_notation = format!("{}", self.cron_notation_value);
-        new_cron.job = format!("{}", self.job_value);
-        new_cron.next_execution = get_next_execution(&self.cron_notation_value);
-        new_cron.job_description = format!("{}", self.job_description_value);
-        new_cron
+        CronJob::new({
+            CronJob {
+                cron_notation: format!("{}", self.cron_notation_value),
+                job: format!("{}", self.job_value),
+                job_description: format!("{}", self.job_description_value),
+                next_execution: get_next_execution(&self.cron_notation_value),
+            }
+        })
     }
 
     fn update_selected_cron(&mut self, selected_cron: &mut CronJob) {

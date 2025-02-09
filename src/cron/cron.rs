@@ -13,9 +13,8 @@ use ratatui::{
         ScrollbarState, Table, TableState,
     },
 };
-use std::fs::File;
-use std::io::{self, BufRead};
-use std::path::Path;
+use std::io::{self, BufRead, Write};
+use std::process::{Command, Stdio};
 use unicode_width::UnicodeWidthStr;
 
 const INFO_TEXT: [&str; 3] = [
@@ -52,13 +51,44 @@ impl CronJob {
         ]
     }
 
-    fn from_crontab(file_path: &str) -> Result<Vec<CronJob>, io::Error> {
-        let path = Path::new(file_path);
-        let file = File::open(path)?;
-        let reader = io::BufReader::new(file);
+    pub fn new(cron_job: CronJob) -> Self {
+        Self {
+            cron_notation: cron_job.cron_notation,
+            job: cron_job.job,
+            job_description: cron_job.job_description,
+            next_execution: cron_job.next_execution,
+        }
+    }
 
+    fn from_crontab() -> Result<Vec<CronJob>, io::Error> {
+        let output = Command::new("crontab")
+            .arg("-l")
+            .stdout(Stdio::piped())
+            .output()?;
+
+        if !output.status.success() {
+            let stderr_output = String::from_utf8_lossy(&output.stderr);
+
+            if stderr_output.contains("no crontab for") {
+                return Ok(vec![CronJob::new({
+                    CronJob {
+                        cron_notation: "User has no crontab".to_string(),
+                        job: String::new(),
+                        job_description: String::new(),
+                        next_execution: String::new(),
+                    }
+                })]);
+            }
+
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Failed to read crontab",
+            ));
+        }
+
+        let reader = io::BufReader::new(&output.stdout[..]);
         let mut cron_jobs = Vec::new();
-        let mut current_description = String::new();
+        let mut comment: Option<String> = None;
 
         for line in reader.lines() {
             let line = line?;
@@ -66,10 +96,13 @@ impl CronJob {
 
             if line.is_empty() {
                 continue;
-            } else if line.starts_with('#') {
-                current_description = line.trim_start_matches('#').trim().to_string();
+            }
+
+            if line.starts_with('#') {
+                comment = Some(line.trim_start_matches('#').trim().to_string());
             } else {
                 let parts: Vec<&str> = line.split_whitespace().collect();
+
                 if parts.len() < 6 {
                     continue;
                 }
@@ -81,13 +114,38 @@ impl CronJob {
                 cron_jobs.push(CronJob {
                     cron_notation,
                     job,
-                    job_description: current_description.clone(),
+                    job_description: comment.take().unwrap_or_else(|| String::new()),
                     next_execution: modified_next_execution,
                 });
             }
         }
 
         Ok(cron_jobs)
+    }
+
+    pub fn save_to_crontab(cron_jobs: &[CronJob]) -> io::Result<()> {
+        let mut new_crontab = String::new();
+
+        for job in cron_jobs {
+            if !job.job.is_empty() {
+                if !new_crontab.is_empty() {
+                    new_crontab.push('\n');
+                }
+                if !job.job_description.is_empty() {
+                    new_crontab.push_str(&format!("# {}\n", job.job_description));
+                }
+                new_crontab.push_str(&format!("{} {}\n", job.cron_notation, job.job));
+            }
+        }
+
+        let mut process = Command::new("crontab").stdin(Stdio::piped()).spawn()?;
+
+        if let Some(stdin) = process.stdin.as_mut() {
+            stdin.write_all(new_crontab.as_bytes())?;
+        }
+
+        process.wait()?;
+        Ok(())
     }
 }
 
@@ -118,11 +176,23 @@ impl Widget for &mut CronTable {
 
 impl CronTable {
     pub fn new() -> Self {
-        let cron_jobs_vec = CronJob::from_crontab("crontab").unwrap();
+        let cron_jobs_vec = CronJob::from_crontab().unwrap_or_else(|err| {
+            vec![CronJob {
+                cron_notation: format!("Error: {}", err),
+                job: String::new(),
+                job_description: String::new(),
+                next_execution: String::new(),
+            }]
+        });
+        let scroll_position = if cron_jobs_vec.is_empty() {
+            0
+        } else {
+            (cron_jobs_vec.len() - 1) * ITEM_HEIGHT
+        };
         Self {
             state: TableState::default().with_selected(0),
             longest_item_lens: constraint_len_calculator(&cron_jobs_vec),
-            scroll_state: ScrollbarState::new((cron_jobs_vec.len() - 1) * ITEM_HEIGHT),
+            scroll_state: ScrollbarState::new(scroll_position),
             colors: TableColors::new(),
             items: cron_jobs_vec,
             show_popup: false,
@@ -168,6 +238,9 @@ impl CronTable {
                 KeyCode::Char('d') => {
                     let index = self.state.selected().unwrap();
                     self.items.remove(index);
+                    CronJob::save_to_crontab(&self.items).unwrap_or_else(|err| {
+                        eprint!("Error saving to crontab: {}", err);
+                    });
                 }
                 KeyCode::Enter => {
                     if !self.items.is_empty() {
@@ -256,7 +329,7 @@ impl CronTable {
             rows,
             [
                 // + 1 is for padding.
-                Constraint::Length(self.longest_item_lens.0 + 4),
+                Constraint::Length(self.longest_item_lens.0 + 8),
                 Constraint::Min(self.longest_item_lens.1 + 1),
                 Constraint::Min(self.longest_item_lens.2),
             ],
