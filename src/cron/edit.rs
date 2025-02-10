@@ -264,8 +264,8 @@ impl Inputs {
         let footer = Layout::vertical([Constraint::Length(3)]);
         let [info_area] = footer.areas(footer_area);
 
-        let selected_cron_notation =
-            get_human_readable_cron(self.cron_notation_value.as_str()).unwrap();
+        let selected_cron_notation = get_human_readable_cron(self.cron_notation_value.as_str())
+            .unwrap_or_else(|e| format!("{}", e));
 
         let wrapped_text: Vec<Line> = selected_cron_notation
             .chars()

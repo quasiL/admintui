@@ -10,9 +10,12 @@ use ratatui::{
     Terminal,
 };
 
+use crate::log::initialize_logging;
+
 mod app;
 mod config;
 mod cron;
+mod log;
 mod menu;
 use app::App;
 
@@ -20,6 +23,7 @@ use app::App;
 /// Initializes the terminal, runs the application, and restores the terminal to its original state.
 fn main() {
     let mut terminal = init(CrosstermBackend::new(io::stdout())).unwrap();
+    //initialize_logging().unwrap();
 
     match App::default().run(&mut terminal) {
         Ok(_) => {}

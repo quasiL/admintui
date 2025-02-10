@@ -2,8 +2,10 @@ use crate::config::CONFIG;
 use crate::cron::CronJob;
 use chrono::Utc;
 use cron_descriptor::cronparser::cron_expression_descriptor;
+use cron_descriptor::cronparser::Options;
 use cron_parser::parse;
 use std::io::{self, BufRead, Write};
+use std::panic;
 use std::process::{Command, Stdio};
 
 pub fn get_next_execution(cron_expr: &str) -> String {
@@ -20,13 +22,28 @@ pub fn get_next_execution(cron_expr: &str) -> String {
 
 pub fn get_human_readable_cron(cron_expr: &str) -> Result<String, String> {
     let now = Utc::now();
+    let trimmed_expr = cron_expr.trim();
 
-    if parse(cron_expr.trim(), &now).is_err() || cron_expr.contains(',') {
-        return Ok("Unable to parse cron expression into human-readable format.".to_string());
+    if trimmed_expr.is_empty() {
+        return Err("Cron expression is empty".to_string());
     }
 
-    let description = cron_expression_descriptor::get_description_cron(cron_expr.trim());
-    Ok(description)
+    if parse(cron_expr.trim(), &now).is_err() || cron_expr.contains(',') {
+        return Err("Unable to generate human-readable format".to_string());
+    }
+
+    let result = panic::catch_unwind(|| {
+        cron_expression_descriptor::get_description_cron_options(
+            trimmed_expr,
+            &Options::twenty_four_hour(),
+        )
+    });
+
+    match result {
+        Ok(Ok(description)) => Ok(description),
+        Ok(Err(e)) => Err(format!("Failed to generate human-readable format: {:?}", e)),
+        Err(_) => Err("Library function panicked while generating description".to_string()),
+    }
 }
 
 pub fn from_crontab() -> Result<Vec<CronJob>, io::Error> {
@@ -116,3 +133,24 @@ pub fn save_to_crontab(cron_jobs: &[CronJob]) -> io::Result<()> {
     process.wait()?;
     Ok(())
 }
+
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+
+//     #[test]
+//     fn test_every45seconds() {
+//         assert_eq!(
+//             "Every 45 seconds",
+//             cron_expression_descriptor::get_description_cron("*/45 * * * * *").unwrap()
+//         );
+//     }
+
+//     #[test]
+//     fn test_two_times_each_afternoon() {
+//         assert_eq!(
+//             "At 2:30 PM and 4:30 PM",
+//             cron_expression_descriptor::get_description_cron("30 14,16 * * *").unwrap()
+//         );
+//     }
+// }

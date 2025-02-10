@@ -86,6 +86,7 @@ impl Widget for &mut CronTable {
 impl CronTable {
     pub fn new() -> Self {
         let cron_jobs_vec = from_crontab().unwrap_or_else(|err| {
+            tracing::error!("Error reading crontab: {}", err);
             vec![CronJob {
                 cron_notation: format!("Error: {}", err),
                 job: String::new(),
