@@ -15,6 +15,7 @@ use crate::log::initialize_logging;
 mod app;
 mod config;
 mod cron;
+mod ftp;
 mod log;
 mod menu;
 use app::App;

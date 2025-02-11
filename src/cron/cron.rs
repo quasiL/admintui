@@ -1,4 +1,4 @@
-use crate::app::Screen;
+use crate::app::{Screen, ScreenTrait};
 use crate::cron::utils::{from_crontab, save_to_crontab};
 use crate::cron::{Inputs, TableStyles};
 use crate::menu::MainMenu;
@@ -68,23 +68,8 @@ pub struct CronTable {
     inputs: Inputs,
 }
 
-impl Widget for &mut CronTable {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let vertical = &Layout::vertical([Constraint::Min(1), Constraint::Length(3)]);
-        let rects = vertical.split(area);
-
-        self.render_table(rects[0], buf);
-        self.render_scrollbar(rects[0], buf);
-        self.render_footer(rects[1], buf);
-
-        if self.show_popup {
-            self.inputs.render_inputs(rects[0], buf);
-        }
-    }
-}
-
-impl CronTable {
-    pub fn new() -> Self {
+impl ScreenTrait for CronTable {
+    fn new() -> Self {
         let cron_jobs_vec = from_crontab().unwrap_or_else(|err| {
             tracing::error!("Error reading crontab: {}", err);
             vec![CronJob {
@@ -110,7 +95,20 @@ impl CronTable {
         }
     }
 
-    pub fn handle_screen(
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
+        let vertical = &Layout::vertical([Constraint::Min(1), Constraint::Length(3)]);
+        let rects = vertical.split(area);
+
+        self.render_table(rects[0], buf);
+        self.render_scrollbar(rects[0], buf);
+        self.render_footer(rects[1], buf);
+
+        if self.show_popup {
+            self.inputs.render_inputs(rects[0], buf);
+        }
+    }
+
+    fn handle_screen(
         &mut self,
         key: event::KeyEvent,
         _mouse: Option<MouseEvent>,
@@ -122,7 +120,9 @@ impl CronTable {
             None
         }
     }
+}
 
+impl CronTable {
     fn handle_keys(&mut self, key: event::KeyEvent) {
         if self.show_popup == true {
             self.inputs

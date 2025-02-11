@@ -1,11 +1,11 @@
-use crate::app::Screen;
+use crate::app::{Screen, ScreenTrait};
 use crate::cron::CronTable;
+use crate::ftp::FtpTable;
 use crate::menu::MenuStyles;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, KeyCode, MouseEvent, MouseEventKind},
     layout::{Constraint, Layout, Rect},
-    style::Stylize,
     symbols,
     text::{Line, Text},
     widgets::{Block, Borders, List, ListState, Paragraph, StatefulWidget, Widget},
@@ -20,6 +20,7 @@ const INFO_TEXT: [&str; 3] = [
 pub struct MainMenu {
     menu_list: MenuList,
     styles: MenuStyles,
+    menu_items: Vec<MenuItem>,
 }
 
 struct MenuList {
@@ -27,38 +28,57 @@ struct MenuList {
     state: ListState,
 }
 
-impl Widget for &mut MainMenu {
-    fn render(self, area: Rect, buf: &mut Buffer) {
+struct MenuItem {
+    label: &'static str,
+    action: fn() -> Screen,
+}
+
+impl ScreenTrait for MainMenu {
+    fn new() -> Self {
+        let menu_items = vec![
+            MenuItem {
+                label: "🕜 Cron Table",
+                action: || Screen::CronTable(CronTable::new()),
+            },
+            MenuItem {
+                label: "📒 FTP",
+                action: || Screen::FtpTable(FtpTable::new()),
+            },
+            MenuItem {
+                label: "🔒 Firewall",
+                action: || Screen::Quit,
+            },
+            MenuItem {
+                label: "🌎 Webserver",
+                action: || Screen::Quit,
+            },
+            MenuItem {
+                label: "🔧 Settings",
+                action: || Screen::Quit,
+            },
+        ];
+        Self {
+            menu_list: MenuList {
+                items: menu_items
+                    .iter()
+                    .map(|item| item.label.to_string())
+                    .collect(),
+                state: ListState::default().with_selected(Some(0)),
+            },
+            styles: MenuStyles::new(),
+            menu_items,
+        }
+    }
+
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).areas(area);
 
         self.render_list(main_area, buf);
         self.render_footer(footer_area, buf);
     }
-}
 
-impl MainMenu {
-    pub fn new() -> Self {
-        Self {
-            menu_list: MenuList {
-                items: vec![
-                    String::from("🕜 Cron Table"),
-                    String::from("📒 MySQL"),
-                    String::from("🔒 Firewall"),
-                    String::from("🌎 Webserver"),
-                    String::from("🔧 Settings"),
-                ],
-                state: ListState::default().with_selected(Some(0)),
-            },
-            styles: MenuStyles::new(),
-        }
-    }
-
-    pub fn handle_screen(
-        &mut self,
-        key: event::KeyEvent,
-        mouse: Option<MouseEvent>,
-    ) -> Option<Screen> {
+    fn handle_screen(&mut self, key: event::KeyEvent, mouse: Option<MouseEvent>) -> Option<Screen> {
         if key.code == KeyCode::Char('q') || key.code == KeyCode::Esc {
             Some(Screen::Quit)
         } else if key.code == KeyCode::Enter {
@@ -68,6 +88,26 @@ impl MainMenu {
         } else {
             self.handle_keys(key);
             None
+        }
+    }
+}
+
+impl MainMenu {
+    fn handle_keys(&mut self, key: event::KeyEvent) {
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.menu_list.state.select_next();
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.menu_list.state.select_previous();
+            }
+            KeyCode::Home => {
+                self.menu_list.state.select_first();
+            }
+            KeyCode::End => {
+                self.menu_list.state.select_last();
+            }
+            _ => {}
         }
     }
 
@@ -95,28 +135,11 @@ impl MainMenu {
     }
 
     fn process_select(&mut self) -> Option<Screen> {
-        match self.menu_list.state.selected() {
-            Some(0) => Some(Screen::CronTable(CronTable::new())),
-            _ => None,
-        }
-    }
-
-    fn handle_keys(&mut self, key: event::KeyEvent) {
-        match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.menu_list.state.select_next();
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.menu_list.state.select_previous();
-            }
-            KeyCode::Home => {
-                self.menu_list.state.select_first();
-            }
-            KeyCode::End => {
-                self.menu_list.state.select_last();
-            }
-            _ => {}
-        }
+        self.menu_list
+            .state
+            .selected()
+            .and_then(|index| self.menu_items.get(index))
+            .map(|item| (item.action)())
     }
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
