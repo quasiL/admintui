@@ -18,6 +18,7 @@ mod cron;
 mod ftp;
 mod log;
 mod menu;
+mod mysql;
 use app::App;
 
 /// The main entry point of the application.

@@ -96,7 +96,7 @@ impl ScreenTrait for CronTable {
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
-        let vertical = &Layout::vertical([Constraint::Min(1), Constraint::Length(3)]);
+        let vertical = Layout::vertical([Constraint::Min(1), Constraint::Length(3)]);
         let rects = vertical.split(area);
 
         self.render_table(rects[0], buf);
@@ -224,7 +224,7 @@ impl CronTable {
                 .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))
                 .collect::<Row>()
                 .style(self.styles.row_style.bg(color))
-                .height(4)
+                .height(ITEM_HEIGHT.try_into().unwrap())
         });
         let bar = " █ ";
         let t = Table::new(

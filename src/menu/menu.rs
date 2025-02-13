@@ -2,6 +2,7 @@ use crate::app::{Screen, ScreenTrait};
 use crate::cron::CronTable;
 use crate::ftp::FtpTable;
 use crate::menu::MenuStyles;
+use crate::mysql::Mysql;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, KeyCode, MouseEvent, MouseEventKind},
@@ -45,8 +46,8 @@ impl ScreenTrait for MainMenu {
                 action: || Screen::FtpTable(FtpTable::new()),
             },
             MenuItem {
-                label: "🔒 Firewall",
-                action: || Screen::Quit,
+                label: "🔒 MySQL",
+                action: || Screen::Mysql(Mysql::new()),
             },
             MenuItem {
                 label: "🌎 Webserver",

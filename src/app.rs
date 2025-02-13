@@ -1,6 +1,7 @@
 use crate::cron::CronTable;
 use crate::ftp::FtpTable;
 use crate::menu::MainMenu;
+use crate::mysql::Mysql;
 use ratatui::{
     backend::Backend,
     buffer::Buffer,
@@ -27,6 +28,7 @@ pub enum Screen {
     MainMenu(MainMenu),
     CronTable(CronTable),
     FtpTable(FtpTable),
+    Mysql(Mysql),
     Quit,
 }
 
@@ -46,6 +48,7 @@ impl Screen {
             Screen::MainMenu(menu) => Some(menu),
             Screen::CronTable(cron) => Some(cron),
             Screen::FtpTable(ftp) => Some(ftp),
+            Screen::Mysql(mysql) => Some(mysql),
             Screen::Quit => None,
         }
     }
@@ -57,6 +60,7 @@ impl Widget for &mut Screen {
             Screen::MainMenu(menu) => menu.render(area, buf),
             Screen::CronTable(cron) => cron.render(area, buf),
             Screen::FtpTable(ftp) => ftp.render(area, buf),
+            Screen::Mysql(mysql) => mysql.render(area, buf),
             Screen::Quit => (),
         }
     }
