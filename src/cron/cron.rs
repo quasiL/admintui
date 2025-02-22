@@ -5,20 +5,15 @@ use crate::menu::MainMenu;
 use ratatui::{
     crossterm::event::{self, KeyCode, MouseEvent},
     layout::{Constraint, Layout, Margin, Rect},
-    prelude::{Buffer, StatefulWidget, Widget},
+    prelude::{Buffer, StatefulWidget},
     text::Text,
     widgets::{
-        Block, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Table, TableState,
+        Cell, HighlightSpacing, Row, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
+        TableState,
     },
 };
 use unicode_width::UnicodeWidthStr;
 
-const INFO_TEXT: [&str; 3] = [
-    "",
-    "(Esc) Return to the main menu | (↓↑) Move up and down | (Enter) Select | (d) Delete selected cron | (n) Add new cron",
-    "",
-];
 const ITEM_HEIGHT: usize = 4;
 
 pub struct CronJob {
@@ -96,12 +91,22 @@ impl ScreenTrait for CronTable {
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
-        let vertical = Layout::vertical([Constraint::Min(1), Constraint::Length(3)]);
+        let vertical = Layout::vertical([Constraint::Min(1), Constraint::Length(2)]);
         let rects = vertical.split(area);
 
         self.render_table(rects[0], buf);
         self.render_scrollbar(rects[0], buf);
-        self.render_footer(rects[1], buf);
+        self.render_footer(
+            rects[1],
+            buf,
+            vec![
+                ("<Esc>", "Return to the main menu"),
+                ("<Enter>", "Edit selected cron"),
+                ("<↓↑>", "Move up and down"),
+                ("<d>", "Delete selected cron"),
+                ("<n>", "Add new cron"),
+            ],
+        );
 
         if self.show_popup {
             self.inputs.render_inputs(rects[0], buf);
@@ -226,7 +231,7 @@ impl CronTable {
                 .style(self.styles.row_style.bg(color))
                 .height(ITEM_HEIGHT.try_into().unwrap())
         });
-        let bar = " █ ";
+        let bar = " ▌ ";
         let t = Table::new(
             rows,
             [
@@ -273,15 +278,6 @@ impl CronTable {
             buf,
             &mut self.scroll_state,
         );
-    }
-
-    fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
-        let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(self.styles.footer_style)
-            .centered()
-            .block(Block::default());
-
-        Widget::render(info_footer, area, buf);
     }
 }
 

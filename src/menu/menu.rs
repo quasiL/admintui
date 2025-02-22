@@ -9,14 +9,8 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     symbols,
     text::{Line, Text},
-    widgets::{Block, Borders, List, ListState, Paragraph, StatefulWidget, Widget},
+    widgets::{Block, Borders, List, ListState, StatefulWidget},
 };
-
-const INFO_TEXT: [&str; 3] = [
-    "",
-    "(Esc|q) Quit | (↓↑) Move up and down | (Enter) Select",
-    "",
-];
 
 pub struct MainMenu {
     menu_list: MenuList,
@@ -38,19 +32,19 @@ impl ScreenTrait for MainMenu {
     fn new() -> Self {
         let menu_items = vec![
             MenuItem {
-                label: "🕜 Cron Table",
+                label: "🕗 Cron Jobs",
                 action: || Screen::CronTable(CronTable::new()),
             },
             MenuItem {
-                label: "📒 FTP",
+                label: "👤 FTP",
                 action: || Screen::FtpTable(FtpTable::new()),
             },
             MenuItem {
-                label: "🔒 MySQL",
+                label: "🐬 MySQL",
                 action: || Screen::Mysql(Mysql::new()),
             },
             MenuItem {
-                label: "🌎 Webserver",
+                label: "🌐 Webserver",
                 action: || Screen::Quit,
             },
             MenuItem {
@@ -73,10 +67,18 @@ impl ScreenTrait for MainMenu {
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
         let [main_area, footer_area] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).areas(area);
+            Layout::vertical([Constraint::Min(1), Constraint::Length(2)]).areas(area);
 
         self.render_list(main_area, buf);
-        self.render_footer(footer_area, buf);
+        self.render_footer(
+            footer_area,
+            buf,
+            vec![
+                ("<Esc/q>", "Quit"),
+                ("<Enter>", "Select"),
+                ("<↓↑>", "Move up and down"),
+            ],
+        );
     }
 
     fn handle_screen(&mut self, key: event::KeyEvent, mouse: Option<MouseEvent>) -> Option<Screen> {
@@ -145,7 +147,7 @@ impl MainMenu {
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
         let block = Block::new()
-            .title(Line::raw("AdminTUI").centered())
+            .title(Line::raw("TUIxel").centered())
             .borders(Borders::TOP)
             .border_set(symbols::border::EMPTY)
             .border_style(self.styles.header_style)
@@ -163,14 +165,5 @@ impl MainMenu {
             .highlight_style(self.styles.selected_row_style);
 
         StatefulWidget::render(list, area, buf, &mut self.menu_list.state);
-    }
-
-    fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
-        let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(self.styles.footer_style)
-            .centered()
-            .block(Block::default());
-
-        Widget::render(info_footer, area, buf);
     }
 }

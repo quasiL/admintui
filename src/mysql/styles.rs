@@ -8,7 +8,6 @@ pub struct ScreenStyles {
     pub info_border_style: Style,
     pub selected_item_style: Style,
     pub scrollbar_style: Style,
-    pub footer_style: Style,
 }
 
 impl ScreenStyles {
@@ -33,9 +32,6 @@ impl ScreenStyles {
                 .fg(Color::White)
                 .bg(Color::DarkGray)
                 .add_modifier(Modifier::REVERSED),
-            footer_style: Style::new()
-                .fg(tailwind::GRAY.c300)
-                .bg(tailwind::SLATE.c700),
         }
     }
 }

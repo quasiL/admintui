@@ -2,15 +2,18 @@ use crate::cron::CronTable;
 use crate::ftp::FtpTable;
 use crate::menu::MainMenu;
 use crate::mysql::Mysql;
+use ratatui::style::{self, Style};
 use ratatui::{
     backend::Backend,
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, MouseEvent},
     layout::Rect,
-    widgets::Widget,
+    text::{Line, Span, Text},
+    widgets::{Block, Paragraph, Widget},
     Terminal,
 };
 use std::io::Error;
+use style::palette::tailwind;
 
 pub struct App {
     screen: Screen,
@@ -40,6 +43,46 @@ pub trait ScreenTrait {
     fn new() -> Self
     where
         Self: Sized;
+
+    fn render_footer(&mut self, area: Rect, buf: &mut Buffer, keybinds: Vec<(&str, &str)>) {
+        let mut spans: Vec<Span> = Vec::new();
+        let mut lines: Vec<Line> = Vec::new();
+
+        let mut current_width = 0;
+        let max_width = area.width.saturating_sub(4);
+
+        for (key, desc) in &keybinds {
+            let key_span = Span::styled(*key, Style::new().fg(tailwind::GRAY.c400));
+            let desc_span = Span::styled(*desc, Style::new().fg(tailwind::GRAY.c500));
+            let spacing = Span::raw("  ");
+
+            let pair_width = key.len() as u16 + 1 + desc.len() as u16 + 2;
+
+            if current_width + pair_width > max_width && !spans.is_empty() {
+                lines.push(Line::from(spans));
+                spans = Vec::new();
+                current_width = 0;
+            }
+
+            spans.push(key_span);
+            spans.push(Span::raw(" "));
+            spans.push(desc_span);
+            spans.push(spacing);
+
+            current_width += pair_width;
+        }
+
+        if !spans.is_empty() {
+            lines.push(Line::from(spans));
+        }
+
+        let info_footer = Paragraph::new(Text::from(lines))
+            .style(Style::new().bg(tailwind::SLATE.c800))
+            .centered()
+            .block(Block::default());
+
+        Widget::render(info_footer, area, buf);
+    }
 }
 
 impl Screen {

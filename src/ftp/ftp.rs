@@ -71,12 +71,22 @@ impl ScreenTrait for FtpTable {
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
-        let vertical = Layout::vertical([Constraint::Min(1), Constraint::Length(3)]);
+        let vertical = Layout::vertical([Constraint::Min(1), Constraint::Length(2)]);
         let rects = vertical.split(area);
 
         self.render_table(rects[0], buf);
         self.render_scrollbar(rects[0], buf);
-        self.render_footer(rects[1], buf);
+        self.render_footer(
+            rects[1],
+            buf,
+            vec![
+                ("<Esc>", "Return to the main menu"),
+                ("<Enter>", "Edit selected user"),
+                ("<↓↑>", "Move up and down"),
+                ("<d>", "Delete selected user"),
+                ("<n>", "Add new user"),
+            ],
+        );
 
         if self.show_popup {
             //self.render_popup(rects[0], buf);
@@ -190,7 +200,7 @@ impl FtpTable {
                 .style(self.styles.row_style.bg(color))
                 .height(ITEM_HEIGHT.try_into().unwrap())
         });
-        let bar = " █ ";
+        let bar = " ▌ ";
         let t = Table::new(
             rows,
             [
@@ -236,15 +246,6 @@ impl FtpTable {
             buf,
             &mut self.scroll_state,
         );
-    }
-
-    fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
-        let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(self.styles.footer_style)
-            .centered()
-            .block(Block::default());
-
-        Widget::render(info_footer, area, buf);
     }
 
     fn render_popup(area: Rect, buf: &mut Buffer) {}

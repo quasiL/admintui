@@ -5,7 +5,6 @@ pub struct MenuStyles {
     pub header_style: Style,
     pub menu_background_style: Style,
     pub selected_row_style: Style,
-    pub footer_style: Style,
 }
 
 impl MenuStyles {
@@ -22,9 +21,6 @@ impl MenuStyles {
                 .fg(tailwind::SLATE.c100)
                 .bg(tailwind::SLATE.c800)
                 .add_modifier(Modifier::BOLD),
-            footer_style: Style::default()
-                .fg(tailwind::SLATE.c100)
-                .bg(tailwind::SLATE.c800),
         }
     }
 }

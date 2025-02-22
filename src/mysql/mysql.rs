@@ -1,25 +1,18 @@
 use crate::app::{Screen, ScreenTrait};
 use crate::menu::MainMenu;
 use crate::mysql::ScreenStyles;
-use ratatui::widgets::Padding;
 use ratatui::{
     crossterm::event::{self, KeyCode, MouseEvent},
     layout::{Constraint, Layout, Margin, Rect},
     prelude::{Buffer, StatefulWidget, Widget},
-    text::{Line, Text},
+    text::Line,
     widgets::{
-        Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Paragraph,
-        Scrollbar, ScrollbarOrientation, ScrollbarState,
+        Block, BorderType, Borders, List, ListItem, ListState, Scrollbar, ScrollbarOrientation,
+        ScrollbarState,
     },
 };
 
-const INFO_TEXT: [&str; 3] = [
-    "",
-    "(Esc) Return to the main menu | (↓↑) Move up and down | (Enter) Select | (d) Delete selected user | (n) Add new user",
-    "",
-];
-
-const ITEM_HEIGHT: usize = 3;
+const ITEM_HEIGHT: usize = 1;
 
 pub struct MysqlUser {
     pub username: String,
@@ -67,7 +60,7 @@ impl ScreenTrait for Mysql {
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
         let [main_area, footer_area] =
-            Layout::vertical([Constraint::Min(1), Constraint::Length(3)]).areas(area);
+            Layout::vertical([Constraint::Min(1), Constraint::Length(2)]).areas(area);
 
         let [user_list_area, info_area] =
             Layout::horizontal([Constraint::Percentage(40), Constraint::Percentage(60)])
@@ -76,7 +69,17 @@ impl ScreenTrait for Mysql {
         self.render_list(user_list_area, buf);
         self.render_scrollbar(user_list_area, buf);
         self.render_info(info_area, buf);
-        self.render_footer(footer_area, buf);
+        self.render_footer(
+            footer_area,
+            buf,
+            vec![
+                ("<Esc>", "Return to the main menu"),
+                ("<Enter>", "Edit selected user"),
+                ("<↓↑>", "Move up and down"),
+                ("<d>", "Delete selected user"),
+                ("<n>", "Add new user"),
+            ],
+        );
     }
 
     fn handle_screen(
@@ -99,7 +102,6 @@ impl Mysql {
             KeyCode::Char('j') | KeyCode::Down => self.next_user(),
             KeyCode::Char('k') | KeyCode::Up => self.previous_user(),
             KeyCode::Char('n') => {
-                // Add a new user (dummy for now)
                 self.items.push(MysqlUser::new("new_user"));
             }
             KeyCode::Char('d') => {
@@ -141,13 +143,7 @@ impl Mysql {
         let items: Vec<ListItem> = self
             .items
             .iter()
-            .map(|user| {
-                ListItem::new(vec![
-                    Line::from(""),
-                    Line::from(user.username.as_str()).centered(),
-                    Line::from(""),
-                ])
-            })
+            .map(|user| ListItem::new(vec![Line::from(user.username.as_str()).centered()]))
             .collect();
 
         let list = List::new(items)
@@ -190,14 +186,5 @@ impl Mysql {
             buf,
             &mut self.scroll_state,
         );
-    }
-
-    fn render_footer(&mut self, area: Rect, buf: &mut Buffer) {
-        let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(self.styles.footer_style)
-            .centered()
-            .block(Block::default());
-
-        Widget::render(info_footer, area, buf);
     }
 }
