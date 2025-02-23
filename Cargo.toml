@@ -1,5 +1,5 @@
 [package]
-name = "admintui"
+name = "tuixel"
 version = "0.1.0"
 edition = "2021"
 
@@ -17,5 +17,6 @@ regex = "1.11.1"
 tracing = "0.1.41"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tui-big-text = "0.7.1"
 tui-textarea = "0.7.0"
 unicode-width = "0.2.0"

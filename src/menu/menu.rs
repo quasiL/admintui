@@ -6,11 +6,11 @@ use crate::mysql::Mysql;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, KeyCode, MouseEvent, MouseEventKind},
-    layout::{Constraint, Layout, Rect},
-    symbols,
-    text::{Line, Text},
-    widgets::{Block, Borders, List, ListState, StatefulWidget},
+    layout::{Alignment, Constraint, Layout, Rect},
+    text::Text,
+    widgets::{Block, BorderType, Borders, List, ListState, StatefulWidget, Widget},
 };
+use tui_big_text::{BigText, PixelSize};
 
 pub struct MainMenu {
     menu_list: MenuList,
@@ -69,7 +69,11 @@ impl ScreenTrait for MainMenu {
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Min(1), Constraint::Length(2)]).areas(area);
 
-        self.render_list(main_area, buf);
+        let [title_area, menu_area] =
+            Layout::vertical([Constraint::Length(5), Constraint::Min(1)]).areas(main_area);
+
+        self.render_list(menu_area, buf);
+        self.render_title(title_area, buf);
         self.render_footer(
             footer_area,
             buf,
@@ -117,7 +121,7 @@ impl MainMenu {
     fn handle_mouse(&mut self, mouse_event: MouseEvent) -> Option<Screen> {
         match mouse_event.kind {
             MouseEventKind::Down(_) => {
-                let menu_start_row = 2;
+                let menu_start_row = 6;
                 let menu_height = self.menu_list.items.len();
                 let item_vertical_span: usize = 3;
 
@@ -146,12 +150,7 @@ impl MainMenu {
     }
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
-        let block = Block::new()
-            .title(Line::raw("TUIxel").centered())
-            .borders(Borders::TOP)
-            .border_set(symbols::border::EMPTY)
-            .border_style(self.styles.header_style)
-            .style(self.styles.menu_background_style);
+        let block = Block::new().style(self.styles.menu_background_style);
 
         let items: Vec<Text> = self
             .menu_list
@@ -165,5 +164,31 @@ impl MainMenu {
             .highlight_style(self.styles.selected_row_style);
 
         StatefulWidget::render(list, area, buf, &mut self.menu_list.state);
+    }
+
+    fn render_title(&mut self, area: Rect, buf: &mut Buffer) {
+        let block = Block::default()
+            // .borders(Borders::ALL)
+            // .border_type(BorderType::Thick)
+            .style(self.styles.header_border_style);
+
+        let inner_area = block.inner(area);
+
+        let [_top_padding, text_area, _bottom_padding] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .areas(inner_area);
+
+        let big_text = BigText::builder()
+            .pixel_size(PixelSize::Sextant)
+            .alignment(Alignment::Center)
+            .style(self.styles.header_style)
+            .lines(vec!["TUIxel".into()])
+            .build();
+
+        Widget::render(block, area, buf);
+        Widget::render(big_text, text_area, buf);
     }
 }

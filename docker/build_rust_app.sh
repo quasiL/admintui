@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Application name
-APP_NAME=admintui
+APP_NAME=tuixel
 
 # Rust Docker image tag
 # Available image tags:
